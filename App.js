@@ -192,16 +192,27 @@
         var me = this;
         this.log("_getProjects");
         this.showMask("Loading project names...");
+        var f = [{
+        	 property: "State", operator: "!=", value: "Closed" 
+        },{
+        	property: "ObjectID", operator: "=", value: me.getContext().getProject().ObjectID
+        }];
         Ext.create('Rally.data.WsapiDataStore',{
-            context: {project: null},
+           /* context: {
+            	project: me.getContext().getProject().ObjectID,
+            	workspace: me.getContext().getWorkspace().ObjectID,
+            	projectScopeUp: true,
+            	projectScopeDown: true
+            },*/
             autoLoad: true,
             model: 'Project',
             limit: 5000,
             fetch: [ 'ObjectID', 'Name' ],
-            filters: { property: "State", operator: "!=", value: "Closed" },
+            filters: f,
             listeners: {
                 load: function( store, data, success ) {
                     var data_length = data.length;
+                    console.log("Number of populated projects = ",data.length);
                     me.log( data_length );
                     for ( var i=0; i<data_length; i++ ) {
                         me.project_hash[ data[i].get('ObjectID') ] = { Name: data[i].get('Name') };
@@ -275,6 +286,7 @@
                     for ( var i=0; i<data_length; i++ ) {
                         me.timebox_hash[ data[i].get('ObjectID') ] = { EndDate: data[i].get('EndDate') };
                     }
+                    console.log("Loaded iterations");
                     me._getDependencies();
                 }
             }
@@ -283,6 +295,7 @@
     _getOurItems: function( type ) {
         this.log(["_getOurItems",type]);
         var me  = this;
+        console.log("Project OID is ",me.getContext().getProject().ObjectID);
         var filters =  [ 
             {
                 property: '__At',
@@ -303,14 +316,22 @@
         /* if ( me.hide_accepted ) {
             filters.push( { property: 'ScheduleState', operator: '!=', value: 'Accepted' } );
         }*/
+       console.log("ME selected tags = ",me.selected_tags.length);
         if ( me.selected_tags.length > 0 ) {
             filters.push( { property: 'Tags', operator: 'in', value: me.selected_tags } );
         }
+        console.log("ME project array = ",me.project_array.length);
         filters.push({property:'Project',operator:'in',value: me.project_array});
         
         Ext.create('Rally.data.lookback.SnapshotStore',{
             autoLoad: true,
-            limit: 3000,
+            limit: 200,
+            context: {
+            	workspace: '/workspace/'+me.getContext().getWorkspace().ObjectID,
+            	project: '/project/'+me.getContext().getProject().ObjectID,
+            	projectScopeUp: true,
+            	projectScopeDown: true
+            },
             fetch: ['Name','_ItemHierarchy',type,'ScheduleState','Project','Iteration','Release', 
                 '_UnformattedID','Blocked','Tags'],
             hydrate: ['ScheduleState','Tags'],
