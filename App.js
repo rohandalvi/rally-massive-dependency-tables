@@ -194,9 +194,9 @@
         this.showMask("Loading project names...");
         var f = [{
         	 property: "State", operator: "!=", value: "Closed" 
-        },{
+        }/*,{
         	property: "ObjectID", operator: "=", value: me.getContext().getProject().ObjectID
-        }];
+        }*/];
         Ext.create('Rally.data.WsapiDataStore',{
            /* context: {
             	project: me.getContext().getProject().ObjectID,
@@ -321,7 +321,7 @@
             filters.push( { property: 'Tags', operator: 'in', value: me.selected_tags } );
         }
         console.log("ME project array = ",me.project_array.length);
-        filters.push({property:'Project',operator:'in',value: me.project_array});
+       // filters.push({property:'Project',operator:'in',value: me.project_array});
         
         Ext.create('Rally.data.lookback.SnapshotStore',{
             autoLoad: true,
@@ -429,8 +429,8 @@
         }));
         query = query.and(Ext.create('Rally.data.lookback.QueryFilter',{property: '__At', operator: '=',value: 'current' }));
         
-        query = query.and(Ext.create('Rally.data.lookback.QueryFilter',
-            {property:'Project',operator:'in',value: me.project_array}));
+        /*query = query.and(Ext.create('Rally.data.lookback.QueryFilter',
+            {property:'Project',operator:'in',value: me.project_array})); requires project*/ 
         
         Ext.create('Rally.data.lookback.SnapshotStore',{
             autoLoad: true,
@@ -508,8 +508,8 @@
         });
         query = query.and(Ext.create('Rally.data.lookback.QueryFilter',{property: '__At', operator: '=',value: 'current' }));
         
-        query = query.and(Ext.create('Rally.data.lookback.QueryFilter',
-            {property:'Project',operator:'in',value: me.project_array}));
+       /* query = query.and(Ext.create('Rally.data.lookback.QueryFilter',
+            {property:'Project',operator:'in',value: me.project_array})); requires project*/
             
         Ext.create('Rally.data.lookback.SnapshotStore',{
             autoLoad: true,
@@ -593,8 +593,8 @@
         }));
         query = query.and(Ext.create('Rally.data.lookback.QueryFilter',{property: '__At', operator: '=',value: 'current' }));
         
-        query = query.and(Ext.create('Rally.data.lookback.QueryFilter',
-            {property:'Project',operator:'in',value: me.project_array}));
+        /*query = query.and(Ext.create('Rally.data.lookback.QueryFilter',
+            {property:'Project',operator:'in',value: me.project_array})); requires project*/
                 
         Ext.create('Rally.data.lookback.SnapshotStore',{
             autoLoad: true,
