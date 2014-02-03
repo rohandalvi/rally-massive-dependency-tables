@@ -20,7 +20,7 @@
                     { xtype: 'container', itemId: 'hide_box'}, 
                     { xtype: 'container', itemId: 'tag_box'},
                     { xtype: 'container', itemId: 'tag_exe_box', layout: { type: 'vbox' } },
-                    { xtype: 'container', itemId: 'show_group_box' }
+                    { xtype: 'container', itemId: 'show_group_box' },
                 ]
             },
             { xtype: 'container', itemId: 'table_box', defaults: { padding: 5 }, items: [
@@ -38,9 +38,14 @@
     project_hash: {}, /* key is object id of projecs */
     project_array: [], /* object IDs */
   	iteration_array: [],
+  	count:0 ,
+  	maxIter:null,
+  	maxPSI: null,
+  	record_array: [],
     tag_hash: {}, /* key is object id of tags */
     selected_tags: [],
     launch: function() {
+    	
         this.first_run = true;
         this._addPrintButton();
         this._addSelectors();
@@ -61,6 +66,7 @@
             }
         });
     },
+   
     _addSelectors: function() {
         this._addShowBySchedule();
         this._addAcceptedCheckbox();
@@ -186,6 +192,9 @@
         this.showMask("Loading dependencies...");
         // to prevent the checkbox reloading from memory to cause a double load of data
         this.first_run = false;
+        this.record_array = [];
+        this.count=0;
+		this.maxIter = null;
         this._getOurItems("Successors");
         this._getOurItems("Predecessors");
     },
@@ -389,6 +398,8 @@
                         release_date: null,
                         iteration_name: null,
                         psi_name: null,
+                       // latest_psi: null,
+                        //latest_iteration:null,
                         iteration_date: null,
                         tags: tags.join(' '),
                         other_id: dependent_ids[j],
@@ -698,6 +709,7 @@
     },
     _populateRowData: function( type, rows ) {
         var me = this;
+        me.count++;
         this.showMask("Making Tables...");
         this.log( "_populateRowData: " + type );
         var filtered_rows = [];
@@ -710,8 +722,8 @@
                     
                     //added
                     item.iteration_name = this.timebox_hash[item.iteration].IterationName;
-                    item.psi_name = this.timebox_hash[item.iteration].IterationName.match(/(\d+)/g)[0];
-                    console.log("ITEM.ITERATION_NAME ",JSON.stringify(this.timebox_hash[item.iteration].IterationName.match(/(\d+)/g)[0]));
+                    item.psi_name = "PSI "+this.timebox_hash[item.iteration].IterationName.match(/(\d+)/g)[0];
+                   // console.log("ITEM.ITERATION_NAME ",JSON.stringify(this.timebox_hash[item.iteration].IterationName.match(/(\d+)/g)[0]));
                 }
                 if (( item.release !== "" ) && ( this.timebox_hash[item.release] )) {
                     item.release_date = this.timebox_hash[item.release].EndDate;
@@ -762,7 +774,24 @@
                 }
             }
         }
+	        filtered_rows = _.sortBy(filtered_rows, function(row){return row.iteration_date;}).reverse(); //sorting again 
+	        me.record_array.push(_.max(filtered_rows, function(row){return row.iteration_date;}));
+        
+       	 //	console.log("FINAL ",me.record_array);
+        	me.maxIter = _.max(me.record_array, function(rec){return rec.iteration_date;});
+        //	console.log("Latest Iteration ",me.maxIter.iteration_name);
+        	
+        	me.maxPSI =  _.max(me.record_array, function(rec){return rec.iteration_date;});
+        	
+        //	console.log("Latest PSI: ",me.maxPSI.psi_name);
+        	filtered_rows[0]["latest_psi"] = filtered_rows[0]["psi_name"];//me.maxPSI.psi_name;
+        	filtered_rows[0]["latest_iteration"] = filtered_rows[0]["iteration_name"];
+        	
+        	console.log("Filtered rows ",filtered_rows);
         this._makeTable( type, filtered_rows );
+    },
+    _get_parent_of_story: function(story){  //recursive function
+    	
     },
     _setLateColors: function(item) {
         item.iteration_out_of_sync = false;
@@ -789,6 +818,8 @@
     _makeTable:function( type, rows ) {
         var me = this;
         me.log( "_makeTable: " + type);
+        
+        
         var left_story = "Providing Story";
         var right_story = "Story";
         var left_team = "Team";
@@ -809,6 +840,8 @@
                 { id: 'iteration_date', label: 'Iteration Date', type: 'date' },
                 {id: 'iteration_name', label: 'Iteration Name',type: 'string'},
                 {id: 'psi_name', label: 'PSI Name',type: 'string'},
+              //  {id: 'latest_psi', label: 'Latest PSI',type: 'string'},
+              //  {id: 'latest_iteration', label: 'Latest Iteration',type: 'string'},
                 { id: 'other_project', label: right_team, type: 'string' },
                 { id: 'other_epic_report', label: 'Epic', type: 'string' },
                 { id: 'other_name', label: right_story, type: 'string' },
@@ -826,8 +859,12 @@
         // that have to be matched to the cols array above (would be nice to have key indexing)
 
         var number_of_rows = rows.length;
-        rows = _.sortBy(rows,function(row){return row.iteration_date;}).reverse();
-        console.log("ROW ",rows[0]["iteration_date"]);
+      //  rows = _.sortBy(rows,function(row){return row.iteration_date;}).reverse();
+      //  temp_max = [];
+     	//me.temp_max.push(_.max(rows, function(row){return row.iteration_date;})); 
+     	me.project_array.push(_.max(rows, function(row){return row.iteration_date;}));
+        console.log("MAX iteration is ",_.max(rows, function(row){return row.iteration_date;}));
+		
         for ( var i=0; i<number_of_rows; i++ ) {
             var table_row = [];
             Ext.Array.each( me.columns, function(column) {
@@ -876,6 +913,7 @@
         
         this.tables[type] = new google.visualization.Table( document.getElementById(table_box_id) );
         //this.tables[type].draw( view, { showRowNumber: false, allowHtml: true } );
+        
         me._redrawTables();
     },
     
@@ -887,6 +925,8 @@
     _redrawTables: function() {
         this.log( "_redrawTables" );
         var me = this;
+	  //  console.log("Temp max ",me.project_array[me.project_array.length-1],me.project_array[me.project_array.length-2]);
+
         // reset to base data
         var col_array = [];
         for ( var i=0;i<me.columns.length;i++ ) {
@@ -969,6 +1009,7 @@
         if ( this.getEl() ) { 
             this.getEl().unmask();
             this.getEl().mask(msg);
+            
         }
     },
     hideMask: function() {
@@ -1021,6 +1062,7 @@
         
         print_window.print();
         print_window.close();
+       
         return false;
     },
     _getLinkedName: function(item) {
