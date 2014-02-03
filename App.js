@@ -37,6 +37,7 @@
     timebox_hash: {}, /* key is object id of iteration or release. Changed both to have EndDate */
     project_hash: {}, /* key is object id of projecs */
     project_array: [], /* object IDs */
+  	iteration_array: [],
     tag_hash: {}, /* key is object id of tags */
     selected_tags: [],
     launch: function() {
@@ -262,6 +263,7 @@
                     me.log( data_length );
                     for ( var i=0; i<data_length; i++ ) {
                         me.timebox_hash[ data[i].get('ObjectID') ] = { EndDate: data[i].get('ReleaseDate') };
+                        
                     }
                     me._getIterations();
                 }
@@ -277,15 +279,21 @@
             autoLoad: true,
             limit: 7500,
             model: 'Iteration',
-            fetch: [ 'ObjectID', 'EndDate' ],
+            fetch: [ 'ObjectID', 'EndDate','Name' ],
             filters: { property: "ObjectID", operator: ">", value: 0 },
             listeners: {
                 load: function( store, data, success ) {
                     var data_length = data.length;
                     me.log( ["Iterations",data_length] );
                     for ( var i=0; i<data_length; i++ ) {
-                        me.timebox_hash[ data[i].get('ObjectID') ] = { EndDate: data[i].get('EndDate') };
+                        me.timebox_hash[ data[i].get('ObjectID') ] = { EndDate: data[i].get('EndDate'), IterationName: data[i].get('Name') };
+                       //	me.timebox_hash[data[i].get('Name')] = {IterationName: data[i].get('Name')};
+                       // me.iteration_array.push(data[i].get('Name'));
+                        //me.timebox_hash["iteration_name"] = {Name: data[i].get('Name')};
+                        //me.timebox_hash[data[i].get('ObjectID')] += {Name: data[i].get('Name')}; //added
                     }
+                    //timebox_array = _.sortBy(timebox_array, function(name){return timebox_array[name];});
+                   // console.log("Sorted ",me.iteration_array);
                     console.log("Loaded iterations");
                     me._getDependencies();
                 }
@@ -320,7 +328,6 @@
         if ( me.selected_tags.length > 0 ) {
             filters.push( { property: 'Tags', operator: 'in', value: me.selected_tags } );
         }
-        console.log("ME project array = ",me.project_array.length);
        // filters.push({property:'Project',operator:'in',value: me.project_array});
         
         Ext.create('Rally.data.lookback.SnapshotStore',{
@@ -336,7 +343,7 @@
                 '_UnformattedID','Blocked','Tags'],
             hydrate: ['ScheduleState','Tags'],
             filters: filters,
-            order: { property: 'ObjectID' },
+            order: { property: 'ReleaseDate' },
             listeners: {
                 load: function( store, data, success ) {
                     me.log(["_getOurItems.load",type,success]);
@@ -367,6 +374,7 @@
                     });
                 }
                 for ( var j=0; j< dependent_ids.length; j++ ) {
+                	
                     rows.push({
                         epic: false,
                         epic_report: "",
@@ -378,8 +386,9 @@
                         schedule_state: data[i].get('ScheduleState'),
                         release: data[i].get('Release'),
                         iteration: data[i].get('Iteration'),
-                        iteration_name: "",
                         release_date: null,
+                        iteration_name: null,
+                        psi_name: null,
                         iteration_date: null,
                         tags: tags.join(' '),
                         other_id: dependent_ids[j],
@@ -655,6 +664,7 @@
             Ext.Array.each( iterations, function( iteration ) {
                 if (( me.timebox_hash[iteration] ) && ( me.timebox_hash[iteration].EndDate > item.iteration_date )) {
                     item.iteration_date = me.timebox_hash[iteration].EndDate;
+                   // item.iteration_name = me.timebox_hash[iteration].Name; //added
                 }
             });
         }
@@ -695,8 +705,13 @@
         for ( var i=0; i<item_length; i++ ) {
             var item = rows[i];
             if ( me._isNotHidden(item) ) {
-                if (( item.iteration !== "" ) && ( this.timebox_hash[item.iteration] )) {
+                if (( item.iteration !== "" ) && ( this.timebox_hash[item.iteration] )) { 
                     item.iteration_date = this.timebox_hash[item.iteration].EndDate;
+                    
+                    //added
+                    item.iteration_name = this.timebox_hash[item.iteration].IterationName;
+                    item.psi_name = this.timebox_hash[item.iteration].IterationName.match(/(\d+)/g)[0];
+                    console.log("ITEM.ITERATION_NAME ",JSON.stringify(this.timebox_hash[item.iteration].IterationName.match(/(\d+)/g)[0]));
                 }
                 if (( item.release !== "" ) && ( this.timebox_hash[item.release] )) {
                     item.release_date = this.timebox_hash[item.release].EndDate;
@@ -792,6 +807,8 @@
                 { id: 'schedule_state', label: 'State', type: 'string' },
                 { id: 'release_date', label: 'Release Date', type: 'date' },
                 { id: 'iteration_date', label: 'Iteration Date', type: 'date' },
+                {id: 'iteration_name', label: 'Iteration Name',type: 'string'},
+                {id: 'psi_name', label: 'PSI Name',type: 'string'},
                 { id: 'other_project', label: right_team, type: 'string' },
                 { id: 'other_epic_report', label: 'Epic', type: 'string' },
                 { id: 'other_name', label: right_story, type: 'string' },
@@ -799,6 +816,7 @@
                 { id: 'other_release_date', label: 'Release Date', type: 'date' },
                 { id: 'other_iteration_date', label: 'Iteration Date', type: 'date' },
                 { id: 'tags', label: 'Tags', type: 'string' }
+               
             ];
         var data_table = new google.visualization.DataTable({
             cols: me.columns
@@ -808,6 +826,8 @@
         // that have to be matched to the cols array above (would be nice to have key indexing)
 
         var number_of_rows = rows.length;
+        rows = _.sortBy(rows,function(row){return row.iteration_date;}).reverse();
+        console.log("ROW ",rows[0]["iteration_date"]);
         for ( var i=0; i<number_of_rows; i++ ) {
             var table_row = [];
             Ext.Array.each( me.columns, function(column) {
@@ -858,6 +878,7 @@
         //this.tables[type].draw( view, { showRowNumber: false, allowHtml: true } );
         me._redrawTables();
     },
+    
     /**
      * 
      * @param {} which_one The type of the table. Valid values are "Predecessors", "Successors", "Both"
