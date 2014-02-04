@@ -39,6 +39,7 @@
     project_array: [], /* object IDs */
   	iteration_array: [],
   	count:0 ,
+  	child_iteration_array: [],
   	maxIter:null,
   	maxPSI: null,
   	record_array: [],
@@ -194,6 +195,7 @@
         this.first_run = false;
         this.record_array = [];
         this.count=0;
+        this.child_iteration_array = [];
 		this.maxIter = null;
         this._getOurItems("Successors");
         this._getOurItems("Predecessors");
@@ -787,11 +789,124 @@
         	filtered_rows[0]["latest_psi"] = filtered_rows[0]["psi_name"];//me.maxPSI.psi_name;
         	filtered_rows[0]["latest_iteration"] = filtered_rows[0]["iteration_name"];
         	
-        	console.log("Filtered rows ",filtered_rows);
+        	//console.log("Filtered rows ",filtered_rows);
+        	console.log("Calling Get parent of story");
+        	//for(var i=0;i<filtered_rows.length;i++)
+        	this._get_leaf_stories();
+        	//this._get_parent_of_story(filtered_rows[i].object_id);
         this._makeTable( type, filtered_rows );
     },
-    _get_parent_of_story: function(story){  //recursive function
+    _get_leaf_stories: function(){
+    	var me = this;
+    	Ext.create('Rally.data.WsapiDataStore',{
+    		autoLoad: true,
+    		model: 'HierarchicalRequirement',
+    		limit: '500',
+    		fetch: ['ObjectID','Children','FormattedID','Iteration','Release'],
+    		//filters:[{property: 'Children.Count', operator: '=', value: 0}],
+    		listeners: {
+    			load: function(store,data,success){
+    				var data_length = data.length;
+    				var sample_array = [];
+    				
+    				for(var i=0;i<data.length;i++){
+    					if(data[i].data.Children==null || data[i].data.Children.length==0)
+    						sample_array.push(data[i]);    					
+    				}
+    				console.log("Number = ", sample_array);
+    				
+    					
+    				
+    				
+    			}
+    		}
+    	});
     	
+    },
+    _get_parent_of_story: function(story_object_id){  //recursive function
+    	var me = this;
+    	//console.log("Inside get parent ",story_object_id);
+    	Ext.create('Rally.data.WsapiDataStore',{
+    		autoLoad: true,
+    		model: 'HierarchicalRequirement',
+    		limit: '5000',
+    		fetch: ['Parent','ObjectID'],
+    		filters:[{property: "ObjectID", operator: "=", value: story_object_id}],
+    		listeners: {
+    			load: function(store,data,success){
+    				var data_length = data.length;
+    				if(data_length==0)
+    				{
+    					return;
+    				}
+    				else if(data[0].data.Parent==null)
+    				return ;
+    				// console.log("Number of parents = ",data_length);
+    				// console.log("Parent data is ",data[0]);
+
+    				me._process_parent(data[0].data.Parent.ObjectID);
+    				me._get_parent_of_story(data[0].data.Parent.ObjectID); //dubious ?
+    			//	me._get_parent_of_story(data[0].data.Parent.ObjectID);
+    				// if(data_length==0 || !this.parent_is_story(data)){
+    					// return;
+    				// }
+    			}
+    		}
+    	});
+    },
+    //given a parent's object id, first, get all children of parent, same time, get max out of all children's PSI, and assign the max to parent's PSI.
+    _process_parent: function(parent_object_id){
+    	var me = this;
+    	//console.log("Inside _process_parent with POID: ",parent_object_id);
+    	Ext.create('Rally.data.WsapiDataStore',{
+    		autoLoad: true,
+    		model: 'HierarchicalRequirement',
+    		limit: '5000',
+    		fetch: ['Children','FormattedID','ObjectID'],
+    		filters:[{property: "ObjectID", operator: "=", value: parent_object_id}],
+    		listeners: {
+    			load: function(store,data,success){
+    				var data_length = data.length;
+    				
+    				if(data_length==0)
+    				return;
+    				else if(data[0].data.Children==null)
+    				return;
+    				//console.log("Number of children = ",data_length);
+    				//console.log("Children Data is ",data[0].data.Children[0]);
+    				
+    				for(var i=0;i<data[0].data.Children.length;i++)
+    				{
+    					me._get_iteration_psi_of_story(data[0].data.Children[i].ObjectID);
+    				}
+    				if(me.child_iteration_array.length==0) return;
+    				else if(me.child_iteration_array.length==0) return;
+    				var max_iteration_of_children = _.max(me.child_iteration_array, function(single){return single._refObjectName.match(/\d+(\.\d{1,2})?/)[0];});
+    				console.log("Max for this set is  ", max_iteration_of_children, "out of ",me.child_iteration_array); //match(/\d.+/)[0]
+    				me.child_iteration_array = []; return;
+    			}
+    		}
+    	});
+    },
+    _get_iteration_psi_of_story: function(story_object_id){
+    	var me = this;
+    	//console.log("Inside _get_iteration_psi_of_story with SOID: ",story_object_id);
+    	Ext.create('Rally.data.WsapiDataStore',{
+    		autoLoad: true,
+    		model: 'HierarchicalRequirement',
+    		limit: '5000',
+    		fetch: ['Iteration','Release','FormattedID','ObjectID'],
+    		filters:[{property: "ObjectID", operator: "=", value: story_object_id}],
+    		listeners: {
+    			load: function(store,data,success){
+    				var data_length = data.length;
+    				if(data_length==0) return null;
+    				else if(data[0].data.Iteration==null) return null;
+    				else  me.child_iteration_array.push(data[0].data.Iteration);
+    				// else return data[0].data.Iteration._refObjectName;
+    			}
+    		}
+    	});	
     },
     _setLateColors: function(item) {
         item.iteration_out_of_sync = false;
@@ -863,7 +978,7 @@
       //  temp_max = [];
      	//me.temp_max.push(_.max(rows, function(row){return row.iteration_date;})); 
      	me.project_array.push(_.max(rows, function(row){return row.iteration_date;}));
-        console.log("MAX iteration is ",_.max(rows, function(row){return row.iteration_date;}));
+        //console.log("MAX iteration is ",_.max(rows, function(row){return row.iteration_date;}));
 		
         for ( var i=0; i<number_of_rows; i++ ) {
             var table_row = [];
