@@ -40,6 +40,9 @@
     project_array: [], /* object IDs */
   	iteration_array: [],
   	count:0 ,
+  	eCount: "",
+  	getiterationcount:0,
+  	store_iterations: [],
   	latestpsi: 0,
   	objectid: 0,
   	all_iterations: [],
@@ -199,6 +202,9 @@
         this.first_run = false;
         this.record_array = [];
         this.count=0;
+        this.eCount = "";
+        this.store_iterations = [];
+        this.getiterationcount=0;
         this.latestpsi = 0;
         this.objectid = 0;
         this.all_iterations = [];
@@ -798,7 +804,7 @@
         	filtered_rows[0]["latest_psi"] = filtered_rows[0]["psi_name"];//me.maxPSI.psi_name;
         	filtered_rows[0]["latest_iteration"] = filtered_rows[0]["iteration_name"];
         	
-        	        	
+        	     me._get_all_iterations();
         		me._set_latest_psi(filtered_rows);
         	
         	//console.log("Filtered rows ",filtered_rows);
@@ -829,6 +835,10 @@
     							//console.log('name .. ', record.get('Name'));
     							if(operation.wasSuccessful()){
     								console.log('name ',record.get('DPSI'), 'psi ',latestpsi, 'iteration ',latestiteration);
+    								
+    								if(latestiteration==null)
+    									latestiteration=" "; 									
+    									
     								record.set('DPSI',latestpsi);
     								record.set('DIteration',latestiteration);
     							//	record.set('Last Iteration',latestiteration);
@@ -883,8 +893,10 @@
     				
     				for(var i=0;i<data.length;i++){
     					if(data[i].data.Children==null || data[i].data.Children.length==0)
-    						sample_array.push(data[i]);    					
+    						sample_array.push(data[i]);
+    						    					
     				}
+    				
     				for(var i=0;i<sample_array.length;i++){
     				me._get_parent_of_story(sample_array[i].data.ObjectID);
     				//console.log("Number = ", sample_array);
@@ -899,6 +911,7 @@
     	
     },
     _get_parent_of_story: function(story_object_id){  //recursive function
+    	
     	var me = this;
     	//console.log("Inside get parent ",story_object_id);
     	Ext.create('Rally.data.WsapiDataStore',{
@@ -910,16 +923,15 @@
     		listeners: {
     			load: function(store,data,success){
     				var data_length = data.length;
-    				if(data_length==0)
-    				{
-    					return;
-    				}
-    				else if(data[0].data.Parent==null)
+    				 if(data_length==0 || data[0].data.Parent==null || data[0].data.Parent._type!="HierarchicalRequirement")
     				return ;
+						
+
     				// console.log("Number of parents = ",data_length);
     				// console.log("Parent data is ",data[0]);
+    				//console.log("Story/Feature ",data[0].data.Parent);
 					me._process_parent(data[0].data.Parent.ObjectID);
-    				
+    				me._get_parent_of_story(data[0].data.Parent.ObjectID)
     			//	me._get_parent_of_story(data[0].data.Parent.ObjectID); //dubious ?
     			//	me._get_parent_of_story(data[0].data.Parent.ObjectID);
     				// if(data_length==0 || !this.parent_is_story(data)){
@@ -933,6 +945,7 @@
     },
     _process_parent: function(parent_object_id){
     	var me = this;
+    	console.log("sample ",parent_object_id);
     	query = Ext.create('Rally.data.lookback.QueryFilter',{property: '__At', operator: '=',value: 'current' }).and(Ext.create('Rally.data.lookback.QueryFilter',{
             property: '_ItemHierarchy', operator: 'in', value: parent_object_id
         }));
@@ -952,19 +965,135 @@
     				var iter = [];
     				var unique_iterations = [];
     				for(var i=0;i<data.length;i++)
-    				{
-    					console.log((data[i].data));
     					iter.push(data[i].data.Iteration);
+    					  					
+   					unique_iterations = _.uniq(iter);
+   					unique_iterations = _.filter(unique_iterations,function(num){return num!="";});
+    				
+   				//console.log("unique # ",unique_iterations.length," are ",unique_iterations);
+	   				
+	   				if(unique_iterations.length!=0)
+	       				{
     					
-    					unique_iterations = _.uniq(iter);
-    					unique_iterations = _.filter(unique_iterations,function(num){return num!="";});
-    				}
-    				console.log("unique # ",unique_iterations.length," are ",unique_iterations);
-    				//console.log("Data #",data[0]," success is ",success); 
+	   					var all_iterations = [];
+	   					// all_iterations = ;
+	   					console.log("unique ",unique_iterations," all ",me.store_iterations);
+	   					var solution = _.first(_.intersection(me.store_iterations,unique_iterations));
+	    				 console.log('solution ',solution);
+	    					 
+	    				 //push value of solution to that parent's iteration
+	    				 me._get_name_of_iteration(solution);
+	    				 console.log("Iter NAME ",me.eCount);
+	    				//me._update_iteration_of_parent(parent_object_id,iter_name);		
+	    			}
     			}
     		}
     		
     	});
+    },
+    _update_iteration_of_parent: function (pOID, iteration){
+    console.log("Updating Iteration ",'/iteration/'+iteration);
+	var me = this;
+		Rally.data.ModelFactory.getModel({
+    			type: 'User Story',
+    			success: function (model){
+    				
+    					var that = this;
+    					
+    					//console.log("objectid #",objectid," latestpsi ",latestpsi);
+    					this.model = model;
+    					var id = pOID;
+    					console.log("_readRecord ",id);
+    					this.model.load(id,{
+    						fetch: ['Name','DIteration'],
+    						callback: function (record, operation){
+    							//console.log('name .. ', record.get('Name'));
+    							if(operation.wasSuccessful()){
+    								
+    								record.set('DIteration',iteration);
+    								
+    								record.save({
+    									callback: function(record,operation){
+    										if(operation.wasSuccessful()){
+    											console.log("Operation Successful");
+    											
+    										}
+    										else
+    										console.log("ERROR ",operation.getError().errors);
+    									},
+    									scope: this,
+    								});
+    								
+    							}
+    						},
+    						scope: this
+    					});
+    					
+    		}
+    		});
+    					
+
+    },
+    _get_name_of_iteration: function(iOID){
+    	var me = this;
+    	
+    	Ext.create('Rally.data.WsapiDataStore',{
+            context: { project: null },
+            autoLoad: true,
+            limit: 7500,
+            model: 'Iteration',
+            fetch: [ 'ObjectID', 'EndDate','Name' ],
+            filters: { property: "ObjectID", operator: "=", value: iOID },
+            sorters:[{
+            	property: 'StartDate',
+            	direction: 'DESC'
+            }],
+            listeners: {
+                load: function( store, data, success ) {
+                    var data_length = data.length;
+                    
+                    me.eCount = data[0].data._refObjectName;
+                    console.log("eCount is ",me.eCount);
+                    
+                    
+                    
+                  //  console.log("TEMP ",temp);
+                   // return temp;
+                }
+            }
+        });
+    },
+    
+    _get_all_iterations: function(){
+    	var me = this;
+    	me.getiterationcount++;
+    	if(me.getiterationcount==1)
+    	 Ext.create('Rally.data.WsapiDataStore',{
+            context: { project: null },
+            autoLoad: true,
+            limit: 7500,
+            model: 'Iteration',
+            fetch: [ 'ObjectID', 'EndDate','Name' ],
+            filters: { property: "ObjectID", operator: ">", value: 0 },
+            sorters:[{
+            	property: 'StartDate',
+            	direction: 'DESC'
+            }],
+            listeners: {
+                load: function( store, data, success ) {
+                    var data_length = data.length;
+                    var temp = [];
+                    
+                    for(var i=0;i<data_length;i++){
+                    	me.store_iterations.push(data[i].data.ObjectID);                    	
+                    }
+                    
+                    
+                  //  console.log("TEMP ",temp);
+                   // return temp;
+                }
+            }
+        });
     },
     
     _setLateColors: function(item) {
