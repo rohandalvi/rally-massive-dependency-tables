@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dependency Report</title>
+
+
+    <script type="text/javascript" src="https://rally1.rallydev.com/apps/2.0p5/sdk-debug.js"></script>
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.5.2/underscore-min.js"></script>
+	<script type="text/javascript" src="https://www.google.com/jsapi"></script>
+    <script type="text/javascript">
+    google.load('visualization', '1', {packages:['table']});
+    google.setOnLoadCallback(function() {
+        Rally.loadScripts([
+            "App.js"
+        ], function() {
+            Rally.launchApp('CustomApp', {
+                name: 'Dependency Report'
+            });
+        }, true);
+    });
+</script>
+
+
+    <link rel="stylesheet" type="text/css" href="app.css">
+</head>
+<body></body>
+</html>
