@@ -40,6 +40,7 @@
     project_array: [], /* object IDs */
   	iteration_array: [],
   	count:0 ,
+  	all_leaf_stories: [],
   	eCount: "",
   	getiterationcount:0,
   	store_iterations: [],
@@ -203,6 +204,7 @@
         this.record_array = [];
         this.count=0;
         this.eCount = "";
+        this.all_leaf_stories = [];
         this.store_iterations = [];
         this.getiterationcount=0;
         this.latestpsi = 0;
@@ -311,7 +313,7 @@
                     me.log( ["Iterations",data_length] );
                     for ( var i=0; i<data_length; i++ ) {
                         me.timebox_hash[ data[i].get('ObjectID') ] = { EndDate: data[i].get('EndDate'), IterationName: data[i].get('Name') };
-                       	me.all_iterations.push(data[i].get('Name'));
+//                       	me.all_iterations.push(data[i].get('Name'));
                        //	me.timebox_hash[data[i].get('Name')] = {IterationName: data[i].get('Name')};
                        // me.iteration_array.push(data[i].get('Name'));
                         //me.timebox_hash["iteration_name"] = {Name: data[i].get('Name')};
@@ -861,20 +863,70 @@
     				
     			}, //this
     			scope: this //this
-    		});	
-    		me._get_leaf_stories();
-
+    		});
+    		
+    		//as discussed today, 
+    		/*
+    		 * 1. Get stories with those prefixes, for each of those stories, 
+    		 * 	a. get all the leaf level child stories
+    		 *  b. get the max iteration out of those stories
+    		 *  c. assign it to the corresponding prefix story.
+    		 */
+    		var prefix_set = ["Epic:","Arch:","Refa:","Innov:","Spike:"];
+    		me._get_prefixed_stories("Epic:");
+    		
+    		//temporarily commented	
+    		//me._get_leaf_stories(); 
+			
     },
-    _onModelRetrieved: function(model){
+    _get_prefixed_stories: function(set){
     	var me = this;
-    	//console.log("_onModelRetrieved ",me.latestpsi," objectid ",me.objectid);
-    	this.model = model;
-    	this._readRecord(model);
-    },
-    _readRecord: function(model){
-    	var id = this.objectid;
-    	console.log("id #",id);
     	
+		Ext.create('Rally.data.WsapiDataStore',{
+			autoLoad: true,
+			model: 'HierarchicalRequirement',
+			limit: '5000',
+			fetch: ['Children','Name'],
+			filters: [
+			{property: 'Name', operator: 'contains', value: set}
+			],
+			listeners: {
+				load: function(store,data,success){
+					var data_length=data.length;
+					for(var i=0;i<data.length;i++){
+					console.log("calling for ",data[i]);
+					me._get_all_leaf_stories(data[i].data.ObjectID);
+					}
+				//	me._get_all_leaf_stories();
+					//for(var i=0;i<data.length;i++)
+				//	me._get_epic_children(data[i].data.ObjectID);
+				}
+			}
+		});    
+    },
+    
+    _get_all_leaf_stories: function(prefixed_story_children){
+    	var me = this;
+    	
+    	var query = Ext.create('Rally.data.lookback.QueryFilter',{
+    		property: '_ItemHierarchy', operator: 'in', value: prefixed_story_children
+    	}).and(Ext.create('Rally.data.lookback.QueryFilter',{property: '_TypeHierarchy', operator: '=', value: "HierarchicalRequirement"})).and(Ext.create('Rally.data.lookback.QueryFilter',{property: 'Children', operator: '=', value: null}));
+    	
+    	query = query.and(Ext.create('Rally.data.lookback.QueryFilter',{property: '__At', operator: '=', value: 'current'}));
+    	Ext.create('Rally.data.lookback.SnapshotStore',{
+    		autoLoad: true,
+    		fetch: ['Iteration','ObjectID','Name','_ItemHierarchy','_UnformattedID'],
+    		sorters: {property: 'Iteration', direction: 'DESC'},
+    		filters: query,
+    		listeners: {
+    			load: function(store,data,success){
+    				console.log("POID ",prefixed_story_children," exploring ",data);
+    				if(data[0].data.Iteration!=null)
+    				me._get_name_of_iteration(data[0].data.Iteration,prefixed_story_children);
+    				
+    			}
+    		}
+    	});
     	
     },
    
@@ -931,7 +983,7 @@
     				// console.log("Parent data is ",data[0]);
     				//console.log("Story/Feature ",data[0].data.Parent);
 					me._process_parent(data[0].data.Parent.ObjectID);
-    				me._get_parent_of_story(data[0].data.Parent.ObjectID)
+    				me._get_parent_of_story(data[0].data.Parent.ObjectID);
     			//	me._get_parent_of_story(data[0].data.Parent.ObjectID); //dubious ?
     			//	me._get_parent_of_story(data[0].data.Parent.ObjectID);
     				// if(data_length==0 || !this.parent_is_story(data)){
@@ -1005,13 +1057,14 @@
     					var id = pOID;
     					console.log("_readRecord ",id);
     					this.model.load(id,{
-    						fetch: ['Name','DIteration'],
+    						fetch: ['Name','DIteration','DPSI'],
     						callback: function (record, operation){
     							//console.log('name .. ', record.get('Name'));
     							if(operation.wasSuccessful()){
     								
     								record.set('DIteration',iteration);
-    								
+    								record.set('DPSI',"PSI "+iteration.match(/\d+/)[0]);
+    								console.log("DPSI ",iteration.match(/\d+/)[0]);
     								record.save({
     									callback: function(record,operation){
     										if(operation.wasSuccessful()){
@@ -1034,7 +1087,7 @@
     					
 
     },
-    _get_name_of_iteration: function(iOID){
+    _get_name_of_iteration: function(iOID,pOID){
     	var me = this;
     	
     	Ext.create('Rally.data.WsapiDataStore',{
@@ -1051,12 +1104,11 @@
             listeners: {
                 load: function( store, data, success ) {
                     var data_length = data.length;
+                    if(data.length!=0){
+                    console.log('Iteration data ',(data[0].data._refObjectName), "pOID ",pOID);
                     
-                    me.eCount = data[0].data._refObjectName;
-                    console.log("eCount is ",me.eCount);
-                    
-                    
-                    
+                    me._update_iteration_of_parent(pOID,data[0].data._refObjectName);
+                    }
                   //  console.log("TEMP ",temp);
                    // return temp;
                 }
