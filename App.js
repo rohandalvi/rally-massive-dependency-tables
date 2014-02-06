@@ -14,21 +14,25 @@
     version: '2.4a',
     items: [
         { xtype: 'container', itemId: 'print_button_box', padding: 5},
+        { xtype: 'container', itemId: 'sync_button_box', padding: 5},
         { xtype: 'container', itemId: 'outer_box', items: [
             { xtype: 'container', itemId: 'selector_box', layout: { type:'hbox' }, defaults: { padding: 15 }, 
                 items: [
                     { xtype: 'container', itemId: 'hide_box'}, 
                     { xtype: 'container', itemId: 'tag_box'},
                     { xtype: 'container', itemId: 'tag_exe_box', layout: { type: 'vbox' } },
-                    { xtype: 'container', itemId: 'show_group_box' },
-                    {xtype: 'container' ,html: 'Note: The records are displayed in decreasing order of Iteration. <br/> So the top record displays the latest Iteration and PSI'}
+                    { xtype: 'container', itemId: 'show_group_box' }
+                  
+                	
                 ]
             },
             { xtype: 'container', itemId: 'table_box', defaults: { padding: 5 }, items: [
+              {xtype: 'container' ,html: 'Note: <p style="color: red">The records are displayed in decreasing order of Iteration. <br/> So the top record in both tables displays the latest Iteration and PSI</p>'},
                 { xtype: 'container', html: 'Your team delivering stories to other teams', cls: "app_header" },
                 { xtype: 'container',  itemId: 'Successors_box'  },
                 { xtype: 'container', html: 'Your team receiving stories from other teams', cls: "app_header" },
                 { xtype: 'container', itemId: 'Predecessors_box' }
+                
             ]}
         ]}
     ],
@@ -74,14 +78,27 @@
                 me._print(); 
             }
         });
+        this.down('#sync_button_box').add({
+        	xtype: 'rallybutton',
+        	itemId: 'sync_button',
+        	text: 'Sync',
+        	disabled: false,
+        	handler: function(){
+        		location.reload();
+        	}
+        	
+        });
     },
+    
    
     _addSelectors: function() {
         this._addShowBySchedule();
         this._addAcceptedCheckbox();
         this._addEpicCheckbox();
         this._addTagPicker();
+    	this._store_for_prefixed_stories();
     },
+    
     _addTagPicker: function() {
         var me = this;
         this.down('#tag_box').add(Ext.create('Rally.ui.picker.TagPicker',{
@@ -193,8 +210,11 @@
     },
     _getBaseData: function() {
         this.tables = {};  /* google display table */
+        this.prefixed_tables = {};
         this.data_tables = {}; /* google data store */
         this.data_views = {}; /* google data view */
+        this.prefixed_data_views = {};
+        this.prefixed_data_tables = {};
         this._getProjects();
     },
     _getDependencies: function() {
@@ -214,6 +234,7 @@
 		this.maxIter = null;
         this._getOurItems("Successors");
         this._getOurItems("Predecessors");
+        //this._make_prefixed_table(new Array()); //added for the other prefixed story table.
     },
     _getProjects: function() {
         var me = this;
@@ -330,7 +351,6 @@
     _getOurItems: function( type ) {
         this.log(["_getOurItems",type]);
         var me  = this;
-        console.log("Project OID is ",me.getContext().getProject().ObjectID);
         var filters =  [ 
             {
                 property: '__At',
@@ -351,11 +371,9 @@
         /* if ( me.hide_accepted ) {
             filters.push( { property: 'ScheduleState', operator: '!=', value: 'Accepted' } );
         }*/
-       console.log("ME selected tags = ",me.selected_tags.length);
         if ( me.selected_tags.length > 0 ) {
             filters.push( { property: 'Tags', operator: 'in', value: me.selected_tags } );
         }
-       // filters.push({property:'Project',operator:'in',value: me.project_array});
         
         Ext.create('Rally.data.lookback.SnapshotStore',{
             autoLoad: true,
@@ -873,12 +891,14 @@
     		 *  c. assign it to the corresponding prefix story.
     		 */
     		var prefix_set = ["Epic:","Arch:","Refa:","Innov:","Spike:"];
-    		me._get_prefixed_stories("Epic:");
+    		for(var i=0;i<prefix_set.length;i++)
+    			me._get_prefixed_stories(prefix_set[i]);
     		
     		//temporarily commented	
     		//me._get_leaf_stories(); 
 			
     },
+    
     _get_prefixed_stories: function(set){
     	var me = this;
     	
@@ -921,15 +941,52 @@
     		listeners: {
     			load: function(store,data,success){
     				console.log("POID ",prefixed_story_children," exploring ",data);
-    				if(data[0].data.Iteration!=null)
-    				me._get_name_of_iteration(data[0].data.Iteration,prefixed_story_children);
-    				
+    				if(data[0].data.Iteration.length!=0)
+    					me._get_name_of_iteration(data[0].data.Iteration,prefixed_story_children);
+    				else{
+    					console.log("no iteration for ",prefixed_story_children);
+    					me._update_iteration_of_parent(prefixed_story_children,null);
+    				}
     			}
     		}
     	});
     	
     },
-   
+    _store_for_prefixed_stories: function(){
+    	var me = this;
+    	var prefix_set = ["Epic:","Arch:","Refa:","Innov:","Spike:"];
+    	
+    	Ext.create('Rally.data.WsapiDataStore',{
+			autoLoad: true,
+			model: 'HierarchicalRequirement',
+			limit: '5000',
+			fetch: ['Iteration','Name','Release','FormattedID'],
+			filters: [
+			{property: 'Name', operator: 'in', value: prefix_set}
+			],
+			listeners: {
+				load: function(store,data,success){
+					me._create_prefixed_table(store);
+				}
+			}
+		});   
+    },
+   _create_prefixed_table: function(data){
+   		Ext.create('Ext.grid.Panel',{
+   			title: 'Prefixed stories',
+   			store: data,
+   			columns:[{
+   				text: 'Name', dataIndex: 'Name'
+   			},{
+   				text: 'Iteration', dataIndex: 'Iteration'
+   			},{text: 'Release', dataIndex: 'Release'},{
+   				text: 'FormattedID', dataIndex: 'FormattedID'
+   			}],
+   			height: 200,
+   			width: 400,
+   			renderTo: Ext.getBody()
+   		});
+   },
     _get_leaf_stories: function(){
     	var me = this;
     	Ext.create('Rally.data.WsapiDataStore',{
@@ -1038,6 +1095,9 @@
 	    				 console.log("Iter NAME ",me.eCount);
 	    				//me._update_iteration_of_parent(parent_object_id,iter_name);		
 	    			}
+	    			else{
+	    				
+	    			}
     			}
     		}
     		
@@ -1061,10 +1121,16 @@
     						callback: function (record, operation){
     							//console.log('name .. ', record.get('Name'));
     							if(operation.wasSuccessful()){
-    								
-    								record.set('DIteration',iteration);
-    								record.set('DPSI',"PSI "+iteration.match(/\d+/)[0]);
-    								console.log("DPSI ",iteration.match(/\d+/)[0]);
+    								if(iteration==null){
+    									iteration=" ";
+    									record.set('DIteration'," ");
+    									record.set('DPSI',"");
+    								}
+    								else{
+	    								record.set('DIteration',iteration);
+	    								record.set('DPSI',"PSI "+iteration.match(/\d+/)[0]);
+    								}
+    								console.log("DPSI ",pOID,iteration);
     								record.save({
     									callback: function(record,operation){
     										if(operation.wasSuccessful()){
@@ -1170,6 +1236,58 @@
         }
         return item;
     },
+    _make_prefixed_table: function(rows){
+		var me = this;
+		console.log("_making_prefixed_table ");
+		
+		columns = [
+			{id: 'name', label: 'Story Name', type: 'string'},
+			{id: 'id', label: 'Story ID', type: 'string'},
+			{id: 'release', label: 'Release', type: 'string'},
+			{id: 'iteration', label: 'Iteration', type: 'string'},
+			{id: 'Diteration', label: 'D-Iteration', type: 'string'},
+			{id: 'Drelease', label: 'D-Release', type: 'string'},
+			{id: 'Tags', label: 'Tags', type: 'string'}
+		];
+		
+		var data_table = new google.visualization.DataTable({
+            cols: columns
+        });
+        rows.push(
+        	{name: 'First story',
+        	 id: 'US1',
+        	 release: 'PSI 3',
+        	 iteration: 'Iteration 3.1',
+        	 DIteration: '',
+        	 Drelease: '',
+        	 Tags: 'None'
+        	}
+        );
+        var number_of_rows = rows.length;//rows.length;
+        
+         for ( var i=0; i<number_of_rows; i++ ) {
+            var table_row = [];
+            Ext.Array.each( columns, function(column) {
+            	var style = {};
+            	
+            	table_row.push( { v: rows[i][column.id], p: style } );
+            });
+            data_table.addRow(table_row);
+         }
+         me.prefixed_data_tables["Prefixed"] = data_table;
+         var date_formatter = new google.visualization.DateFormat({formatType:'short'});
+          var view = new google.visualization.DataView(data_table);
+      	 this.prefixed_data_views["Prefixed"] = view;
+        	
+        var outer_box_id = 'Prefixed_box';
+        var table_box_id = 'Prefixed_table_box';
+        
+        if ( me.down('#' + table_box_id ) ) { me.down('#'+table_box_id).destroy(); }
+        me.down('#'+outer_box_id).add( { xtype: 'container', id: table_box_id });
+        
+        this.prefixed_tables["Prefixed"] = new google.visualization.Table( document.getElementById(table_box_id) );
+        
+    },
     _makeTable:function( type, rows ) {
         var me = this;
         me.log( "_makeTable: " + type);
@@ -1267,6 +1385,7 @@
         me.down('#'+outer_box_id).add( { xtype: 'container', id: table_box_id });
         
         this.tables[type] = new google.visualization.Table( document.getElementById(table_box_id) );
+        console.log("Table box id ",table_box_id);
         //this.tables[type].draw( view, { showRowNumber: false, allowHtml: true } );
         
         me._redrawTables();
