@@ -63,6 +63,9 @@
         this._addPrintButton();
         this._addSelectors();
         this._getBaseData();
+        this.store_iterations = [];
+        this._get_all_iterations();
+
     },
     log: function( msg ) {
         window.console && console.log( new Date(), msg );
@@ -96,7 +99,6 @@
         this._addAcceptedCheckbox();
         this._addEpicCheckbox();
         this._addTagPicker();
-    	this._store_for_prefixed_stories();
     },
     
     _addTagPicker: function() {
@@ -225,7 +227,7 @@
         this.count=0;
         this.eCount = "";
         this.all_leaf_stories = [];
-        this.store_iterations = [];
+        
         this.getiterationcount=0;
         this.latestpsi = 0;
         this.objectid = 0;
@@ -320,7 +322,6 @@
     _getIterations: function() {
         var me = this;
         me.log( "_getIterations " );
-        
         Ext.create('Rally.data.WsapiDataStore',{
             context: { project: null },
             autoLoad: true,
@@ -426,6 +427,7 @@
                         blocked: data[i].get('Blocked'),
                         object_id: data[i].get('ObjectID'),
                         direction: direction,
+                        dIteration: data[i].get('DIteration'),
                         project: data[i].get('Project'),
                         name: me._getLinkedName(data[i].getData()),
                         schedule_state: data[i].get('ScheduleState'),
@@ -491,11 +493,12 @@
         Ext.create('Rally.data.lookback.SnapshotStore',{
             autoLoad: true,
             limit: gap,
-            fetch: ['Name', '_ItemHierarchy', 'Iteration', 'Release', '_UnformattedID' ],
+            fetch: ['Name', '_ItemHierarchy', 'Iteration', 'Release', '_UnformattedID','c_DIteration' ],
             filters: query,
             listeners: {
                 load: function( store, data, success ) {
-                    me.log(["_doNestedOurLeavesArray.load", success]);
+                    me.log(["_doNestedOurLeavesArray.load", success,data]);
+                    
                     var data_length = data.length;
                     for ( var i=0;i<data_length;i++ ) {
                         // only care if this is the child of one we already got
@@ -655,7 +658,7 @@
         Ext.create('Rally.data.lookback.SnapshotStore',{
             autoLoad: true,
             limit: gap,
-            fetch: ['Name', '_ItemHierarchy', 'Iteration', 'Release', '_UnformattedID' ],
+            fetch: ['Name', '_ItemHierarchy', 'Iteration', 'Release', '_UnformattedID','c_DIteration' ],
             filters: query,
             listeners: {
                 load: function( store, data, success ) {
@@ -811,6 +814,7 @@
             }
         }
 	        filtered_rows = _.sortBy(filtered_rows, function(row){return row.iteration_date;}).reverse(); //sorting again 
+	        console.log("Filtered ",filtered_rows);
 	       // me.record_array.push(_.max(filtered_rows, function(row){return row.iteration_date;}));
         
        	 //	console.log("FINAL ",me.record_array);
@@ -820,11 +824,10 @@
         	//me.maxPSI =  _.max(me.record_array, function(rec){return rec.iteration_date;});
         	
         //	console.log("Latest PSI: ",me.maxPSI.psi_name);
-        console.log("test ",filtered_rows.length);
         	filtered_rows[0]["latest_psi"] = filtered_rows[0]["psi_name"];//me.maxPSI.psi_name;
         	filtered_rows[0]["latest_iteration"] = filtered_rows[0]["iteration_name"];
         	
-        	     me._get_all_iterations();
+        	  //   me._get_all_iterations();
         		me._set_latest_psi(filtered_rows);
         	
         	//console.log("Filtered rows ",filtered_rows);
@@ -848,7 +851,7 @@
     					//console.log("objectid #",objectid," latestpsi ",latestpsi);
     					this.model = model;
     					var id = objectid;
-    					console.log("_readRecord ",id);
+    				//	console.log("_readRecord ",id);
     					this.model.load(id,{
     						fetch: ['Name','DPSI'],
     						callback: function (record, operation){
@@ -890,13 +893,15 @@
     		 *  b. get the max iteration out of those stories
     		 *  c. assign it to the corresponding prefix story.
     		 */
-    		var prefix_set = ["Epic:","Arch:","Refa:","Innov:","Spike:"];
+    		var prefix_set = ["Epic:","Arch:","Refa:","Innov:","Spike:","Producer:","Dependency:"];
+    		this.showMask("Syncing data...");
     		for(var i=0;i<prefix_set.length;i++)
     			me._get_prefixed_stories(prefix_set[i]);
     		
     		//temporarily commented	
     		//me._get_leaf_stories(); 
-			
+    		
+			this.hideMask();
     },
     
     _get_prefixed_stories: function(set){
@@ -914,9 +919,10 @@
 				load: function(store,data,success){
 					var data_length=data.length;
 					for(var i=0;i<data.length;i++){
-					console.log("calling for ",data[i]);
+					//console.log("calling for ",data[i]);
 					me._get_all_leaf_stories(data[i].data.ObjectID);
 					}
+					
 				//	me._get_all_leaf_stories();
 					//for(var i=0;i<data.length;i++)
 				//	me._get_epic_children(data[i].data.ObjectID);
@@ -925,6 +931,10 @@
 		});    
     },
     
+    /*
+     * iter_array contains the set of iterations of all children
+     * match these with the superset of iterations (sorted by EndDate DESC to get the latest iteration)
+     */
     _get_all_leaf_stories: function(prefixed_story_children){
     	var me = this;
     	
@@ -940,53 +950,71 @@
     		filters: query,
     		listeners: {
     			load: function(store,data,success){
-    				console.log("POID ",prefixed_story_children," exploring ",data);
-    				if(data[0].data.Iteration.length!=0)
-    					me._get_name_of_iteration(data[0].data.Iteration,prefixed_story_children);
+    				var iter_array = [];
+    				var unscheduled = false;
+    				for(var i=0;i<data.length;i++){
+    					if(data[i].data.Iteration.length!=0)
+    					iter_array[i] = parseInt(data[i].data.Iteration);
+    				}
+    				
+    				if(iter_array.length!=0){
+    				if(iter_array.length!=data.length){
+    					unscheduled = true;
+    				}
+    				console.log('before length ',me.store_iterations.length);	
+    				var groupedByEndDate = _.uniq(me.store_iterations);	
+    				console.log('after length ',groupedByEndDate.length);
+    				 //groupedByEndDate = _.indexBy(groupedByEndDate,"EndDate");
+    				//groupedByEndDate = _.sortBy(groupedByEndDate, function(record){return record.EndDate;}).reverse();
+    				
+    				var latest_iteration = _.first(_.intersection(groupedByEndDate,iter_array));
+    				
+    				console.log('latest iteration for pOID ',prefixed_story_children,' is ',latest_iteration);
+    				me._get_name_of_iteration(latest_iteration,prefixed_story_children,unscheduled);
+    				// if(iter_array.length>0)
+    					// me._get_latest_iteration(iter_array,prefixed_story_children);
+    			//	console.log("iter array ",iter_array);
+    				//var final_array = _.filter(groupedByEndDate, function(item){return _.contains(iter_array,item.id);});
+    				
+    				//console.log("POID ",prefixed_story_children," exploring ",data," iter array",groupedByEndDate);
+    				
+    					//me._get_name_of_iteration(data[0].data.Iteration,prefixed_story_children);
+    				}
     				else{
+    					// IN cases where the EPIC does not have 
     					console.log("no iteration for ",prefixed_story_children);
-    					me._update_iteration_of_parent(prefixed_story_children,null);
+    					//me._get_self_iteration(prefixed_story_children);
+    					me._update_iteration_of_parent(prefixed_story_children,null,unscheduled);
     				}
     			}
     		}
     	});
     	
     },
-    _store_for_prefixed_stories: function(){
+    
+    
+    _get_latest_iteration: function(iteration_array,pOID){
     	var me = this;
-    	var prefix_set = ["Epic:","Arch:","Refa:","Innov:","Spike:"];
     	
-    	Ext.create('Rally.data.WsapiDataStore',{
-			autoLoad: true,
-			model: 'HierarchicalRequirement',
-			limit: '5000',
-			fetch: ['Iteration','Name','Release','FormattedID'],
-			filters: [
-			{property: 'Name', operator: 'in', value: prefix_set}
-			],
-			listeners: {
-				load: function(store,data,success){
-					me._create_prefixed_table(store);
-				}
-			}
-		});   
+    	console.log('iteration array for pOID ',pOID,' is ',iteration_array);
+    	var query = Ext.create('Rally.data.lookback.QueryFilter',{
+    		property: 'EndDate', operator: 'in', value: iteration_array
+    	}).and(Ext.create('Rally.data.lookback.QueryFilter',{property: '_TypeHierarchy', operator: '=', value: "Iteration"})).and(Ext.create('Rally.data.lookback.QueryFilter',{property: '__At', operator: '=', value: 'current'}));
+    	
+    	Ext.create('Rally.data.lookback.SnapshotStore',{
+    		autoLoad: true,
+    		fetch: ['EndDate','ObjectID','Name','StartDate'],
+    		filters: query,
+    		sorters: [{property: 'EndDate', direction: 'DESC'}],
+    		listeners: {
+    			load: function(store,data,success){
+    				console.log("results for pOID ",pOID," is ",data);
+    			}
+    		}
+    	});
+    	
     },
-   _create_prefixed_table: function(data){
-   		Ext.create('Ext.grid.Panel',{
-   			title: 'Prefixed stories',
-   			store: data,
-   			columns:[{
-   				text: 'Name', dataIndex: 'Name'
-   			},{
-   				text: 'Iteration', dataIndex: 'Iteration'
-   			},{text: 'Release', dataIndex: 'Release'},{
-   				text: 'FormattedID', dataIndex: 'FormattedID'
-   			}],
-   			height: 200,
-   			width: 400,
-   			renderTo: Ext.getBody()
-   		});
-   },
+
     _get_leaf_stories: function(){
     	var me = this;
     	Ext.create('Rally.data.WsapiDataStore',{
@@ -1069,13 +1097,18 @@
     		},
     		fetch: ['Iteration','Name','_ItemHierarchy','Release'],
     		filters: query,
+    		sorters:[{
+            	property: 'Iteration',
+            	direction: 'DESC'
+            }],
     		listeners: {
     			load: function(store,data,success){
     				var iter = [];
     				var unique_iterations = [];
     				for(var i=0;i<data.length;i++)
     					iter.push(data[i].data.Iteration);
-    					  					
+    				
+    				console.log("DATA ",data);	  					
    					unique_iterations = _.uniq(iter);
    					unique_iterations = _.filter(unique_iterations,function(num){return num!="";});
     				
@@ -1090,8 +1123,10 @@
 	   					var solution = _.first(_.intersection(me.store_iterations,unique_iterations));
 	    				 console.log('solution ',solution);
 	    					 
-	    				 //push value of solution to that parent's iteration
-	    				 me._get_name_of_iteration(solution);
+	    				 /*
+	    				  * Uncomment this and the other call in _get_name_of_iteration.
+	    				  */
+	    				// me._get_name_of_iteration(solution);
 	    				 console.log("Iter NAME ",me.eCount);
 	    				//me._update_iteration_of_parent(parent_object_id,iter_name);		
 	    			}
@@ -1103,8 +1138,8 @@
     		
     	});
     },
-    _update_iteration_of_parent: function (pOID, iteration){
-    console.log("Updating Iteration ",'/iteration/'+iteration);
+    _update_iteration_of_parent: function (pOID, iteration,unscheduled){
+   // console.log("Updating Iteration ",'/iteration/'+iteration);
 	var me = this;
 		Rally.data.ModelFactory.getModel({
     			type: 'User Story',
@@ -1115,26 +1150,36 @@
     					//console.log("objectid #",objectid," latestpsi ",latestpsi);
     					this.model = model;
     					var id = pOID;
-    					console.log("_readRecord ",id);
+    					//console.log("_readRecord ",id);
     					this.model.load(id,{
-    						fetch: ['Name','DIteration','DPSI'],
+    						fetch: ['Name','DIteration','DPSI','PortfolioItem'],
     						callback: function (record, operation){
     							//console.log('name .. ', record.get('Name'));
     							if(operation.wasSuccessful()){
+    								console.log("Updating iteration for parent ",pOID," iteration ",iteration," unscheduled is ",unscheduled);
     								if(iteration==null){
     									iteration=" ";
     									record.set('DIteration'," ");
     									record.set('DPSI',"");
     								}
     								else{
+    									if(unscheduled==true)
+    										iteration+="*";	
 	    								record.set('DIteration',iteration);
 	    								record.set('DPSI',"PSI "+iteration.match(/\d+/)[0]);
+	    								
     								}
     								console.log("DPSI ",pOID,iteration);
     								record.save({
     									callback: function(record,operation){
     										if(operation.wasSuccessful()){
-    											console.log("Operation Successful");
+    											if(record.get('Name').substring(0,5) == "EPIC:"){
+    												
+    												//console.log("EPIC Name ",record.get('PortfolioItem'));
+    												if(record.get('PortfolioItem')!=null)
+    												me._update_feature_iteration(record,iteration);
+    											}
+    											//console.log("Operation Successful");
     											
     										}
     										else
@@ -1153,7 +1198,55 @@
     					
 
     },
-    _get_name_of_iteration: function(iOID,pOID){
+    _update_feature_iteration: function(feature,iteration){
+    	var feature_object = feature.get('PortfolioItem');
+    	
+    	
+    	var fID = feature_object._ref.toString().match(/\d+/)[0];
+    	console.log('Feature ID is ',fID,' and iteration to be updated is ',iteration);
+		
+		Rally.data.ModelFactory.getModel({
+			type: 'PortfolioItem/Feature',
+			success: function(model){
+				model.load(fID,{
+					fetch: ['Name','FormattedID','DIteration','DPSI'],
+					callback: function(record,operation){
+						console.log('Prior to update DIteration is ', record.get('DIteration'));
+						record.set('DIteration',iteration);
+						record.set('DPSI',"PSI "+iteration.match(/\d+/)[0]);
+						record.save({
+							callback: function(record,operation){
+								if(operation.wasSuccessful()){
+									console.log('DIteration after update is ',record.get('DIteration'));
+									console.log('DPSI after update is ',record.get('DPSI'));
+								}
+							}
+						});
+					}
+				});
+			}
+		});
+    },
+    _get_all_features: function (epicID){
+    	var me = this;
+    	
+    	Ext.create('Rally.data.WsapiDataStore',{
+    		autoLoad: true,
+    		model: 'HierarchicalRequirement',
+    		fetch: ['ObjectID','Name','FormattedID','Parent','UserStories'],
+    		filters: { property: "ObjectID", operator: "=", value: epicID},
+    		listeners: {
+    			load: function(store,data,success){
+    				var data_length = data.length;
+    				
+    				//console.log("FEATURE ",data);
+    			}
+    		}
+    	});
+    },
+    
+    
+    _get_name_of_iteration: function(iOID,pOID,flag){
     	var me = this;
     	
     	Ext.create('Rally.data.WsapiDataStore',{
@@ -1161,7 +1254,7 @@
             autoLoad: true,
             limit: 7500,
             model: 'Iteration',
-            fetch: [ 'ObjectID', 'EndDate','Name' ],
+            fetch: [ 'ObjectID', 'EndDate','Name','StartDate' ],
             filters: { property: "ObjectID", operator: "=", value: iOID },
             sorters:[{
             	property: 'StartDate',
@@ -1171,9 +1264,8 @@
                 load: function( store, data, success ) {
                     var data_length = data.length;
                     if(data.length!=0){
-                    console.log('Iteration data ',(data[0].data._refObjectName), "pOID ",pOID);
                     
-                    me._update_iteration_of_parent(pOID,data[0].data._refObjectName);
+                    me._update_iteration_of_parent(pOID,data[0].data._refObjectName,flag);
                     }
                   //  console.log("TEMP ",temp);
                    // return temp;
@@ -1194,7 +1286,7 @@
             fetch: [ 'ObjectID', 'EndDate','Name' ],
             filters: { property: "ObjectID", operator: ">", value: 0 },
             sorters:[{
-            	property: 'StartDate',
+            	property: 'EndDate',
             	direction: 'DESC'
             }],
             listeners: {
@@ -1236,58 +1328,7 @@
         }
         return item;
     },
-    _make_prefixed_table: function(rows){
-		var me = this;
-		console.log("_making_prefixed_table ");
-		
-		columns = [
-			{id: 'name', label: 'Story Name', type: 'string'},
-			{id: 'id', label: 'Story ID', type: 'string'},
-			{id: 'release', label: 'Release', type: 'string'},
-			{id: 'iteration', label: 'Iteration', type: 'string'},
-			{id: 'Diteration', label: 'D-Iteration', type: 'string'},
-			{id: 'Drelease', label: 'D-Release', type: 'string'},
-			{id: 'Tags', label: 'Tags', type: 'string'}
-		];
-		
-		var data_table = new google.visualization.DataTable({
-            cols: columns
-        });
-        rows.push(
-        	{name: 'First story',
-        	 id: 'US1',
-        	 release: 'PSI 3',
-        	 iteration: 'Iteration 3.1',
-        	 DIteration: '',
-        	 Drelease: '',
-        	 Tags: 'None'
-        	}
-        );
-        var number_of_rows = rows.length;//rows.length;
-        
-         for ( var i=0; i<number_of_rows; i++ ) {
-            var table_row = [];
-            Ext.Array.each( columns, function(column) {
-            	var style = {};
-            	
-            	table_row.push( { v: rows[i][column.id], p: style } );
-            });
-            data_table.addRow(table_row);
-         }
-         me.prefixed_data_tables["Prefixed"] = data_table;
-         var date_formatter = new google.visualization.DateFormat({formatType:'short'});
-          var view = new google.visualization.DataView(data_table);
-      	 this.prefixed_data_views["Prefixed"] = view;
-        	
-        var outer_box_id = 'Prefixed_box';
-        var table_box_id = 'Prefixed_table_box';
-        
-        if ( me.down('#' + table_box_id ) ) { me.down('#'+table_box_id).destroy(); }
-        me.down('#'+outer_box_id).add( { xtype: 'container', id: table_box_id });
-        
-        this.prefixed_tables["Prefixed"] = new google.visualization.Table( document.getElementById(table_box_id) );
-        
-    },
+   
     _makeTable:function( type, rows ) {
         var me = this;
         me.log( "_makeTable: " + type);
@@ -1340,8 +1381,9 @@
 		
         for ( var i=0; i<number_of_rows; i++ ) {
             var table_row = [];
+            console.log("ROWS ",rows[i]);
             Ext.Array.each( me.columns, function(column) {
-
+				
                 // iteration_out_of_sync
                 var style = {};
                 
@@ -1385,7 +1427,6 @@
         me.down('#'+outer_box_id).add( { xtype: 'container', id: table_box_id });
         
         this.tables[type] = new google.visualization.Table( document.getElementById(table_box_id) );
-        console.log("Table box id ",table_box_id);
         //this.tables[type].draw( view, { showRowNumber: false, allowHtml: true } );
         
         me._redrawTables();
@@ -1536,7 +1577,7 @@
         
         print_window.print();
         print_window.close();
-       
+       fe
         return false;
     },
     _getLinkedName: function(item) {
