@@ -50,6 +50,7 @@
   	store_iterations: [],
   	latestpsi: 0,
   	objectid: 0,
+  	syncCount: 0,
   	all_iterations: [],
   	child_iteration_array: [],
   	maxIter:null,
@@ -227,7 +228,7 @@
         this.count=0;
         this.eCount = "";
         this.all_leaf_stories = [];
-        
+        this.syncCount=0;
         this.getiterationcount=0;
         this.latestpsi = 0;
         this.objectid = 0;
@@ -420,7 +421,7 @@
                     });
                 }
                 for ( var j=0; j< dependent_ids.length; j++ ) {
-                	
+                	console.log('DATA ',data[i]);
                     rows.push({
                         epic: false,
                         epic_report: "",
@@ -749,6 +750,7 @@
     _populateRowData: function( type, rows ) {
         var me = this;
         me.count++;
+        if(rows.length!=0){
         this.showMask("Making Tables...");
         this.log( "_populateRowData: " + type );
         var filtered_rows = [];
@@ -760,8 +762,12 @@
                     item.iteration_date = this.timebox_hash[item.iteration].EndDate;
                     
                     //added
+                    if(item.iteration_date){
+                    
                     item.iteration_name = this.timebox_hash[item.iteration].IterationName;
                     item.psi_name = "PSI "+this.timebox_hash[item.iteration].IterationName.match(/(\d+)/g)[0];
+                    console.log("iteration_date ",item.iteration_date," iteration_name ",item.iteration_name);
+                    }
                    // console.log("ITEM.ITERATION_NAME ",JSON.stringify(this.timebox_hash[item.iteration].IterationName.match(/(\d+)/g)[0]));
                 }
                 if (( item.release !== "" ) && ( this.timebox_hash[item.release] )) {
@@ -836,10 +842,16 @@
         	//this._get_leaf_stories();
         	//this._get_parent_of_story(filtered_rows[i].object_id);
         this._makeTable( type, filtered_rows );
+        }
+        else{
+        	this.showMask("No records found!");
+        	me._get_prefixes();
+        	
+        }
     },
     _set_latest_psi: function(rows){
     		 me = this;
-			 Rally.data.ModelFactory.getModel({
+			/* Rally.data.ModelFactory.getModel({
     			type: 'User Story',
     			success: function (model){
     				
@@ -884,7 +896,7 @@
     				
     			}, //this
     			scope: this //this
-    		});
+    		});*/
     		
     		//as discussed today, 
     		/*
@@ -893,25 +905,29 @@
     		 *  b. get the max iteration out of those stories
     		 *  c. assign it to the corresponding prefix story.
     		 */
-    		var prefix_set = ["Epic:","Arch:","Refa:","Innov:","Spike:","Producer:","Dependency:"];
-    		this.showMask("Syncing data...");
-    		for(var i=0;i<prefix_set.length;i++)
-    			me._get_prefixed_stories(prefix_set[i]);
     		
+    		me._get_prefixes();
     		//temporarily commented	
     		//me._get_leaf_stories(); 
     		
-			this.hideMask();
+    },
+    _get_prefixes: function(){
+    	var prefix_set = ["Epic:","Arch:","Refa:","Innov:","Spike:","Producer:","Dependency:","Consumer:"];
+    		this.showMask("Syncing data...");
+    		for(var i=0;i<prefix_set.length;i++){
+    			me.syncCount++;
+    			me._get_prefixed_stories(prefix_set[i]);
+    		}
     },
     
     _get_prefixed_stories: function(set){
     	var me = this;
-    	
+    	this.showMask("Getting prefixed stories...");
 		Ext.create('Rally.data.WsapiDataStore',{
 			autoLoad: true,
 			model: 'HierarchicalRequirement',
 			limit: '5000',
-			fetch: ['Children','Name'],
+			fetch: ['Children','Name','Iteration'],
 			filters: [
 			{property: 'Name', operator: 'contains', value: set}
 			],
@@ -920,7 +936,7 @@
 					var data_length=data.length;
 					for(var i=0;i<data.length;i++){
 					//console.log("calling for ",data[i]);
-					me._get_all_leaf_stories(data[i].data.ObjectID);
+					me._get_all_leaf_stories(data[i].data.ObjectID,data[i].data.Iteration);
 					}
 					
 				//	me._get_all_leaf_stories();
@@ -928,16 +944,17 @@
 				//	me._get_epic_children(data[i].data.ObjectID);
 				}
 			}
-		});    
+		}); 
+		me.hideMask();   
     },
     
     /*
      * iter_array contains the set of iterations of all children
      * match these with the superset of iterations (sorted by EndDate DESC to get the latest iteration)
      */
-    _get_all_leaf_stories: function(prefixed_story_children){
+    _get_all_leaf_stories: function(prefixed_story_children,prefixed_story_children_iteration){
     	var me = this;
-    	
+    	this.showMask("Getting children data of prefixed stories...");
     	var query = Ext.create('Rally.data.lookback.QueryFilter',{
     		property: '_ItemHierarchy', operator: 'in', value: prefixed_story_children
     	}).and(Ext.create('Rally.data.lookback.QueryFilter',{property: '_TypeHierarchy', operator: '=', value: "HierarchicalRequirement"})).and(Ext.create('Rally.data.lookback.QueryFilter',{property: 'Children', operator: '=', value: null}));
@@ -957,19 +974,16 @@
     					iter_array[i] = parseInt(data[i].data.Iteration);
     				}
     				
-    				if(iter_array.length!=0){
+    				if(data.length!=0){
     				if(iter_array.length!=data.length){
     					unscheduled = true;
     				}
-    				console.log('before length ',me.store_iterations.length);	
     				var groupedByEndDate = _.uniq(me.store_iterations);	
-    				console.log('after length ',groupedByEndDate.length);
     				 //groupedByEndDate = _.indexBy(groupedByEndDate,"EndDate");
     				//groupedByEndDate = _.sortBy(groupedByEndDate, function(record){return record.EndDate;}).reverse();
     				
     				var latest_iteration = _.first(_.intersection(groupedByEndDate,iter_array));
     				
-    				console.log('latest iteration for pOID ',prefixed_story_children,' is ',latest_iteration);
     				me._get_name_of_iteration(latest_iteration,prefixed_story_children,unscheduled);
     				// if(iter_array.length>0)
     					// me._get_latest_iteration(iter_array,prefixed_story_children);
@@ -984,7 +998,8 @@
     					// IN cases where the EPIC does not have 
     					console.log("no iteration for ",prefixed_story_children);
     					//me._get_self_iteration(prefixed_story_children);
-    					me._update_iteration_of_parent(prefixed_story_children,null,unscheduled);
+    					me._get_name_of_iteration(prefixed_story_children_iteration,prefixed_story_children,unscheduled);
+    					//me._update_iteration_of_parent(prefixed_story_children,null,unscheduled);
     				}
     			}
     		}
@@ -1140,6 +1155,7 @@
     },
     _update_iteration_of_parent: function (pOID, iteration,unscheduled){
    // console.log("Updating Iteration ",'/iteration/'+iteration);
+   this.showMask("Updating Iteration of Parent");
 	var me = this;
 		Rally.data.ModelFactory.getModel({
     			type: 'User Story',
@@ -1195,12 +1211,12 @@
     					
     		}
     		});
-    					
+    		me.hideMask();		
 
     },
     _update_feature_iteration: function(feature,iteration){
     	var feature_object = feature.get('PortfolioItem');
-    	
+    	this.showMask("Updating Feature of Parent");
     	
     	var fID = feature_object._ref.toString().match(/\d+/)[0];
     	console.log('Feature ID is ',fID,' and iteration to be updated is ',iteration);
@@ -1211,21 +1227,25 @@
 				model.load(fID,{
 					fetch: ['Name','FormattedID','DIteration','DPSI'],
 					callback: function(record,operation){
-						console.log('Prior to update DIteration is ', record.get('DIteration'));
+						console.log('Prior to update DIteration is ', record.get('DIteration'),' and feature is ',fID,' and iteraton is ',iteration);
+						if(iteration!=" "){
 						record.set('DIteration',iteration);
 						record.set('DPSI',"PSI "+iteration.match(/\d+/)[0]);
 						record.save({
 							callback: function(record,operation){
 								if(operation.wasSuccessful()){
+									
 									console.log('DIteration after update is ',record.get('DIteration'));
 									console.log('DPSI after update is ',record.get('DPSI'));
 								}
 							}
 						});
 					}
+					}
 				});
 			}
 		});
+		me.hideMask();
     },
     _get_all_features: function (epicID){
     	var me = this;
@@ -1248,7 +1268,7 @@
     
     _get_name_of_iteration: function(iOID,pOID,flag){
     	var me = this;
-    	
+    	this.showMask("Getting Iteration Name");
     	Ext.create('Rally.data.WsapiDataStore',{
             context: { project: null },
             autoLoad: true,
@@ -1272,6 +1292,7 @@
                 }
             }
         });
+        me.hideMask();
     },
     
     _get_all_iterations: function(){
@@ -1511,7 +1532,7 @@
             }
         }
     
-        this.hideMask();
+       // this.hideMask();
     },
     _setAssociatedArraysToEmpty: function(item) {
         item.children_releases = [];
@@ -1577,7 +1598,7 @@
         
         print_window.print();
         print_window.close();
-       fe
+       
         return false;
     },
     _getLinkedName: function(item) {
