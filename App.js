@@ -1,4 +1,4 @@
-/* 
+  /* 
  * NOTES:
  * * MAKE SURE TO READ THE README for building/compiling manual steps
  * * This is dependent upon the existence of and access to Google Tables
@@ -50,7 +50,6 @@
   	store_iterations: [],
   	latestpsi: 0,
   	objectid: 0,
-  	syncCount: 0,
   	all_iterations: [],
   	child_iteration_array: [],
   	maxIter:null,
@@ -88,7 +87,8 @@
         	text: 'Sync',
         	disabled: false,
         	handler: function(){
-        		location.reload();
+        		me._get_prefixes();
+        		//window.top.location.reload();
         	}
         	
         });
@@ -228,7 +228,7 @@
         this.count=0;
         this.eCount = "";
         this.all_leaf_stories = [];
-        this.syncCount=0;
+        
         this.getiterationcount=0;
         this.latestpsi = 0;
         this.objectid = 0;
@@ -421,7 +421,7 @@
                     });
                 }
                 for ( var j=0; j< dependent_ids.length; j++ ) {
-                	console.log('DATA ',data[i]);
+                	
                     rows.push({
                         epic: false,
                         epic_report: "",
@@ -762,12 +762,8 @@
                     item.iteration_date = this.timebox_hash[item.iteration].EndDate;
                     
                     //added
-                    if(item.iteration_date){
-                    
                     item.iteration_name = this.timebox_hash[item.iteration].IterationName;
                     item.psi_name = "PSI "+this.timebox_hash[item.iteration].IterationName.match(/(\d+)/g)[0];
-                    console.log("iteration_date ",item.iteration_date," iteration_name ",item.iteration_name);
-                    }
                    // console.log("ITEM.ITERATION_NAME ",JSON.stringify(this.timebox_hash[item.iteration].IterationName.match(/(\d+)/g)[0]));
                 }
                 if (( item.release !== "" ) && ( this.timebox_hash[item.release] )) {
@@ -842,12 +838,11 @@
         	//this._get_leaf_stories();
         	//this._get_parent_of_story(filtered_rows[i].object_id);
         this._makeTable( type, filtered_rows );
-        }
-        else{
-        	this.showMask("No records found!");
-        	me._get_prefixes();
-        	
-        }
+      }
+     else{
+    this.showMask("No records found!");
+    //me._get_prefixes();
+}
     },
     _set_latest_psi: function(rows){
     		 me = this;
@@ -906,23 +901,25 @@
     		 *  c. assign it to the corresponding prefix story.
     		 */
     		
-    		me._get_prefixes();
     		//temporarily commented	
-    		//me._get_leaf_stories(); 
+    		//me._get_leaf_stories();
+    		 
+    		//me._get_prefixes();
     		
+			//this.hideMask();
+			
     },
     _get_prefixes: function(){
+    	var me = this;
     	var prefix_set = ["Epic:","Arch:","Refa:","Innov:","Spike:","Producer:","Dependency:","Consumer:"];
-    		this.showMask("Syncing data...");
-    		for(var i=0;i<prefix_set.length;i++){
-    			me.syncCount++;
+    	this.showMask("Syncing data...");
+    		for(var i=0;i<prefix_set.length;i++)
     			me._get_prefixed_stories(prefix_set[i]);
-    		}
+    		
     },
-    
     _get_prefixed_stories: function(set){
     	var me = this;
-    	this.showMask("Getting prefixed stories...");
+    	this.showMask("Getting Prefixed Stories...");
 		Ext.create('Rally.data.WsapiDataStore',{
 			autoLoad: true,
 			model: 'HierarchicalRequirement',
@@ -944,8 +941,8 @@
 				//	me._get_epic_children(data[i].data.ObjectID);
 				}
 			}
-		}); 
-		me.hideMask();   
+		});  
+        this.hideMask();
     },
     
     /*
@@ -954,7 +951,7 @@
      */
     _get_all_leaf_stories: function(prefixed_story_children,prefixed_story_children_iteration){
     	var me = this;
-    	this.showMask("Getting children data of prefixed stories...");
+    	this.showMask("Getting all child stories of Parent...");
     	var query = Ext.create('Rally.data.lookback.QueryFilter',{
     		property: '_ItemHierarchy', operator: 'in', value: prefixed_story_children
     	}).and(Ext.create('Rally.data.lookback.QueryFilter',{property: '_TypeHierarchy', operator: '=', value: "HierarchicalRequirement"})).and(Ext.create('Rally.data.lookback.QueryFilter',{property: 'Children', operator: '=', value: null}));
@@ -974,17 +971,21 @@
     					iter_array[i] = parseInt(data[i].data.Iteration);
     				}
     				
-    				if(data.length!=0){
+    				
     				if(iter_array.length!=data.length){
     					unscheduled = true;
     				}
+    				//console.log('before length ',me.store_iterations.length);	
     				var groupedByEndDate = _.uniq(me.store_iterations);	
+    				//console.log('after length ',groupedByEndDate.length);
     				 //groupedByEndDate = _.indexBy(groupedByEndDate,"EndDate");
     				//groupedByEndDate = _.sortBy(groupedByEndDate, function(record){return record.EndDate;}).reverse();
     				
     				var latest_iteration = _.first(_.intersection(groupedByEndDate,iter_array));
+    				var first_iteration = _.last(_.intersection(groupedByEndDate,iter_array));
     				
-    				me._get_name_of_iteration(latest_iteration,prefixed_story_children,unscheduled);
+    				console.log('latest iteration for pOID ',prefixed_story_children,' is ',latest_iteration,' first is ',first_iteration);
+    				me._get_name_of_iteration(latest_iteration,first_iteration,prefixed_story_children,unscheduled);
     				// if(iter_array.length>0)
     					// me._get_latest_iteration(iter_array,prefixed_story_children);
     			//	console.log("iter array ",iter_array);
@@ -993,18 +994,11 @@
     				//console.log("POID ",prefixed_story_children," exploring ",data," iter array",groupedByEndDate);
     				
     					//me._get_name_of_iteration(data[0].data.Iteration,prefixed_story_children);
-    				}
-    				else{
-    					// IN cases where the EPIC does not have 
-    					console.log("no iteration for ",prefixed_story_children);
-    					//me._get_self_iteration(prefixed_story_children);
-    					me._get_name_of_iteration(prefixed_story_children_iteration,prefixed_story_children,unscheduled);
-    					//me._update_iteration_of_parent(prefixed_story_children,null,unscheduled);
-    				}
+    				
     			}
     		}
     	});
-    	
+    	this.hideMask();
     },
     
     
@@ -1153,9 +1147,9 @@
     		
     	});
     },
-    _update_iteration_of_parent: function (pOID, iteration,unscheduled){
+    _update_iteration_of_parent: function (pOID,iOID,lOID, iteration,unscheduled){
    // console.log("Updating Iteration ",'/iteration/'+iteration);
-   this.showMask("Updating Iteration of Parent");
+        this.showMask("Updating Iteration of Parent...");
 	var me = this;
 		Rally.data.ModelFactory.getModel({
     			type: 'User Story',
@@ -1175,7 +1169,7 @@
     								console.log("Updating iteration for parent ",pOID," iteration ",iteration," unscheduled is ",unscheduled);
     								if(iteration==null){
     									iteration=" ";
-    									record.set('DIteration'," ");
+    									record.set('DIteration',iteration);
     									record.set('DPSI',"");
     								}
     								else{
@@ -1189,12 +1183,13 @@
     								record.save({
     									callback: function(record,operation){
     										if(operation.wasSuccessful()){
-    											if(record.get('Name').substring(0,5) == "EPIC:"){
+    											//if(record.get('Name').substring(0,5) == "EPIC:"){
     												
     												//console.log("EPIC Name ",record.get('PortfolioItem'));
+    												console.log("operation on success ",record.get("PortfolioItem"));
     												if(record.get('PortfolioItem')!=null)
-    												me._update_feature_iteration(record,iteration);
-    											}
+    												me._update_feature_iteration(record,iteration,iOID,lOID);
+    											//}
     											//console.log("Operation Successful");
     											
     										}
@@ -1211,13 +1206,13 @@
     					
     		}
     		});
-    		me.hideMask();		
+    		me.hideMask();			
 
     },
-    _update_feature_iteration: function(feature,iteration){
+    _update_feature_iteration: function(feature,iteration,iOID,lOID){
     	var feature_object = feature.get('PortfolioItem');
-    	this.showMask("Updating Feature of Parent");
     	
+    	this.showMask("Updating Feature of Parent story...");
     	var fID = feature_object._ref.toString().match(/\d+/)[0];
     	console.log('Feature ID is ',fID,' and iteration to be updated is ',iteration);
 		
@@ -1227,25 +1222,109 @@
 				model.load(fID,{
 					fetch: ['Name','FormattedID','DIteration','DPSI'],
 					callback: function(record,operation){
-						console.log('Prior to update DIteration is ', record.get('DIteration'),' and feature is ',fID,' and iteraton is ',iteration);
-						if(iteration!=" "){
+						console.log('Prior to update DIteration is ', record.get('DIteration'),' and feature is ',fID,' and iteration is ',iteration);
+                                                if(iteration!=""){
 						record.set('DIteration',iteration);
 						record.set('DPSI',"PSI "+iteration.match(/\d+/)[0]);
 						record.save({
 							callback: function(record,operation){
 								if(operation.wasSuccessful()){
-									
+                                                                       
 									console.log('DIteration after update is ',record.get('DIteration'));
 									console.log('DPSI after update is ',record.get('DPSI'));
+									console.log('FID is ',record.get('FormattedID'),' First Iteration is ',lOID,' last iteration is ',iOID);
+									me._get_feature_start_end_date(fID,lOID,iOID);
 								}
 							}
 						});
+                                            }
 					}
+				});
+			}
+		});
+       this.hideMask();
+    },
+    /*
+     * Gets Iteration dates for first and last Iteration
+     * Going further, add the Start date of first iteration & End date of last iteration as Planned StartDate and EndDate of Feature.
+     */
+    _get_feature_start_end_date: function (fID,first,last){
+    	var configs = [];
+    	this.showMask("Getting Planned dates for feature");
+    	var me = this;
+    	// using async.js here
+    	configs.push({
+    		model: "Iteration",
+    		fetch: ['Name','StartDate','EndDate','ObjectID'],
+    		filters: [{property: 'ObjectID', operator: '=', value: first }]
+    	});
+    	
+    	configs.push({
+    		model: "Iteration",
+    		fetch: ['Name','StartDate','EndDate','ObjectID'],
+    		filters: [{property: 'ObjectID', operator: '=', value: last}]
+    	});
+    	
+    	async.map(configs, this.wsapiQuery, function(err,results){
+    		var firstIteration = results[0];
+    		var lastIteration = results[1];
+    		if(firstIteration && lastIteration){
+    		console.log('FID: ',fID,' First Data ',firstIteration[0].get("StartDate"),' Second Data ',lastIteration[0].get("EndDate"));
+    		me._update_feature_dates(fID,firstIteration[0].get("StartDate"),lastIteration[0].get("EndDate"));
+    		}
+    		else{
+    			console.log("Either the first or last iteration dates could not be found! Skipping! for ",fID);
+    		}
+    	});
+    	
+    	this.hideMask();
+    },
+    
+    /*
+     * Update PlannedStartDate -> Start, PlannedEndDate -> End for Feature -> fID
+     */
+    _update_feature_dates: function(fID, Start, End){
+    	var me = this;
+    	this.showMask("One Moment...");
+    	Rally.data.ModelFactory.getModel({
+			type: 'PortfolioItem/Feature',
+			success: function(model){
+				model.load(fID,{
+					fetch: ['Name','FormattedID','PlannedStartDate','PlannedEndDate'],
+					callback: function(record,operation){
+						console.log('Prior to update Start is ', record.get('PlannedStartDate'),' and feature is ',fID,' and EndDate is ',record.get('PlannedEndDate'));
+						record.set('PlannedStartDate',Start);
+						record.set('PlannedEndDate',End);
+						record.save({
+							callback: function(record,operation){
+								if(operation.wasSuccessful()){
+                                                                       
+									console.log('PlannedStartDate after update is ',record.get('PlannedStartDate'));
+									console.log('PlannedEndDate after update is ',record.get('PlannedEndDate'));
+								}
+							}
+						});
+                                            
 					}
 				});
 			}
 		});
 		me.hideMask();
+    },
+    
+    wsapiQuery: function (config,callback){
+    	Ext.create('Rally.data.WsapiDataStore',{
+    		autoLoad: true,
+    		model: config.model,
+    		fetch: config.fetch,
+    		filters: config.filters,
+    		listeners: {
+    			scope: this,
+    			load: function(store,data){
+    				callback(null,data);
+    			}
+    		}
+    	});
     },
     _get_all_features: function (epicID){
     	var me = this;
@@ -1266,9 +1345,9 @@
     },
     
     
-    _get_name_of_iteration: function(iOID,pOID,flag){
+    _get_name_of_iteration: function(iOID,lOID,pOID,flag){
     	var me = this;
-    	this.showMask("Getting Iteration Name");
+    	this.showMask("Getting name of Iteration...");
     	Ext.create('Rally.data.WsapiDataStore',{
             context: { project: null },
             autoLoad: true,
@@ -1285,7 +1364,7 @@
                     var data_length = data.length;
                     if(data.length!=0){
                     
-                    me._update_iteration_of_parent(pOID,data[0].data._refObjectName,flag);
+                    me._update_iteration_of_parent(pOID,iOID,lOID,data[0].data._refObjectName,flag);
                     }
                   //  console.log("TEMP ",temp);
                    // return temp;
@@ -1532,7 +1611,7 @@
             }
         }
     
-       // this.hideMask();
+        this.hideMask();
     },
     _setAssociatedArraysToEmpty: function(item) {
         item.children_releases = [];
