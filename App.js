@@ -45,6 +45,7 @@
   	iteration_array: [],
   	count:0 ,
   	all_leaf_stories: [],
+  	featureCount: 0,
   	eCount: "",
   	getiterationcount:0,
   	store_iterations: [],
@@ -84,10 +85,18 @@
         this.down('#sync_button_box').add({
         	xtype: 'rallybutton',
         	itemId: 'sync_button',
-        	text: 'Sync',
+        	text: 'Sync Data',
         	disabled: false,
         	handler: function(){
-        		me._get_prefixes();
+				Ext.create('Rally.ui.dialog.ConfirmDialog', {
+				    message: 'This will compute D-Iteration and D-PSI values and may take some time.. To view updated data on this app, Refresh the app later on.',
+				    continueLabel: 'Well, Ok.',
+				    continueFn: function(){
+				        //do something awesome
+				        me._get_prefixes();
+				    }
+				}).show();
+        		
         		//window.top.location.reload();
         	}
         	
@@ -226,6 +235,7 @@
         this.first_run = false;
         this.record_array = [];
         this.count=0;
+        this.featureCount=0;
         this.eCount = "";
         this.all_leaf_stories = [];
         
@@ -335,7 +345,7 @@
                     var data_length = data.length;
                     me.log( ["Iterations",data_length] );
                     for ( var i=0; i<data_length; i++ ) {
-                        me.timebox_hash[ data[i].get('ObjectID') ] = { EndDate: data[i].get('EndDate'), IterationName: data[i].get('Name') };
+                        me.timebox_hash[ data[i].get('ObjectID') ] = { EndDate: data[i].get('EndDate'), IterationName: data[i].get("Name")};
 //                       	me.all_iterations.push(data[i].get('Name'));
                        //	me.timebox_hash[data[i].get('Name')] = {IterationName: data[i].get('Name')};
                        // me.iteration_array.push(data[i].get('Name'));
@@ -715,14 +725,13 @@
             Ext.Array.each( iterations, function( iteration ) {
                 if (( me.timebox_hash[iteration] ) && ( me.timebox_hash[iteration].EndDate > item.iteration_date )) {
                     item.iteration_date = me.timebox_hash[iteration].EndDate;
-                   // item.iteration_name = me.timebox_hash[iteration].Name; //added
+                    item.iteration_name = me.timebox_hash[iteration].IterationName; //added
                 }
             });
         }
         return item;
     },
     _setOtherEpicData: function(item, other) {
-        //this.log( "_setOtherEpicData" );
 
         var me = this;
         var releases = other.children_releases;
@@ -764,7 +773,6 @@
                     //added
                     item.iteration_name = this.timebox_hash[item.iteration].IterationName;
                     item.psi_name = "PSI "+this.timebox_hash[item.iteration].IterationName.match(/(\d+)/g)[0];
-                   // console.log("ITEM.ITERATION_NAME ",JSON.stringify(this.timebox_hash[item.iteration].IterationName.match(/(\d+)/g)[0]));
                 }
                 if (( item.release !== "" ) && ( this.timebox_hash[item.release] )) {
                     item.release_date = this.timebox_hash[item.release].EndDate;
@@ -788,7 +796,6 @@
                             item.other_project = this.project_hash[other.Project].Name;
                         } else {
                             item.other_project = "Unknown " + other.Project;
-                            //this.log( [ "Removed because in a closed project: " + other.Name ] );
                             in_open_project = false;
                         }
                     }
@@ -816,99 +823,21 @@
             }
         }
 	        filtered_rows = _.sortBy(filtered_rows, function(row){return row.iteration_date;}).reverse(); //sorting again 
-	        console.log("Filtered ",filtered_rows);
-	       // me.record_array.push(_.max(filtered_rows, function(row){return row.iteration_date;}));
-        
-       	 //	console.log("FINAL ",me.record_array);
-        	//me.maxIter = _.max(me.record_array, function(rec){return rec.iteration_date;});
-        //	console.log("Latest Iteration ",me.maxIter.iteration_name);
-        	
-        	//me.maxPSI =  _.max(me.record_array, function(rec){return rec.iteration_date;});
-        	
-        //	console.log("Latest PSI: ",me.maxPSI.psi_name);
+	      
         	filtered_rows[0]["latest_psi"] = filtered_rows[0]["psi_name"];//me.maxPSI.psi_name;
         	filtered_rows[0]["latest_iteration"] = filtered_rows[0]["iteration_name"];
         	
-        	  //   me._get_all_iterations();
-        		me._set_latest_psi(filtered_rows);
-        	
-        	//console.log("Filtered rows ",filtered_rows);
-        	
-        	//for(var i=0;i<filtered_rows.length;i++)
-        	//this._get_leaf_stories();
-        	//this._get_parent_of_story(filtered_rows[i].object_id);
         this._makeTable( type, filtered_rows );
       }
      else{
-    this.showMask("No records found!");
-    //me._get_prefixes();
-}
-    },
-    _set_latest_psi: function(rows){
-    		 me = this;
-			/* Rally.data.ModelFactory.getModel({
-    			type: 'User Story',
-    			success: function (model){
-    				
-    				for(var i=0;i<rows.length;i++){
-    					var that = this;
-    					var objectid = rows[i].object_id;
-    					var latestpsi = rows[0]["latest_psi"];
-    					var latestiteration = rows[0]["iteration_name"];
-    					//console.log("objectid #",objectid," latestpsi ",latestpsi);
-    					this.model = model;
-    					var id = objectid;
-    				//	console.log("_readRecord ",id);
-    					this.model.load(id,{
-    						fetch: ['Name','DPSI'],
-    						callback: function (record, operation){
-    							//console.log('name .. ', record.get('Name'));
-    							if(operation.wasSuccessful()){
-    								console.log('name ',record.get('DPSI'), 'psi ',latestpsi, 'iteration ',latestiteration);
-    								
-    								if(latestiteration==null)
-    									latestiteration=" "; 									
-    									
-    								record.set('DPSI',latestpsi);
-    								record.set('DIteration',latestiteration);
-    							//	record.set('Last Iteration',latestiteration);
-    								record.save({
-    									callback: function(record,operation){
-    									if(operation.wasSuccessful()){
-    										console.log("Record updated!");
-    									}	
-    									},
-    									scope:this
-    								});
-    								
-    							}
-    						},
-    						scope: this
-    					});
-    					
-    					
-    				}
-    				
-    			}, //this
-    			scope: this //this
-    		});*/
-    		
-    		//as discussed today, 
-    		/*
-    		 * 1. Get stories with those prefixes, for each of those stories, 
-    		 * 	a. get all the leaf level child stories
-    		 *  b. get the max iteration out of those stories
-    		 *  c. assign it to the corresponding prefix story.
-    		 */
-    		
-    		//temporarily commented	
-    		//me._get_leaf_stories();
-    		 
-    		//me._get_prefixes();
-    		
-			//this.hideMask();
-			
-    },
+    	this.showMask("No records found!");
+    
+	}
+   },
+    
+    /*
+     * Computation of D-Iteration and D-PSI starts here.
+     */
     _get_prefixes: function(){
     	var me = this;
     	var prefix_set = ["Epic:","Arch:","Refa:","Innov:","Spike:","Producer:","Dependency:","Consumer:"];
@@ -932,13 +861,9 @@
 				load: function(store,data,success){
 					var data_length=data.length;
 					for(var i=0;i<data.length;i++){
-					//console.log("calling for ",data[i]);
-					me._get_all_leaf_stories(data[i].data.ObjectID,data[i].data.Iteration);
+					me._get_all_leaf_stories(data[i].data.ObjectID);
 					}
-					
-				//	me._get_all_leaf_stories();
-					//for(var i=0;i<data.length;i++)
-				//	me._get_epic_children(data[i].data.ObjectID);
+
 				}
 			}
 		});  
@@ -949,7 +874,7 @@
      * iter_array contains the set of iterations of all children
      * match these with the superset of iterations (sorted by EndDate DESC to get the latest iteration)
      */
-    _get_all_leaf_stories: function(prefixed_story_children,prefixed_story_children_iteration){
+    _get_all_leaf_stories: function(prefixed_story_children){
     	var me = this;
     	this.showMask("Getting all child stories of Parent...");
     	var query = Ext.create('Rally.data.lookback.QueryFilter',{
@@ -964,6 +889,7 @@
     		filters: query,
     		listeners: {
     			load: function(store,data,success){
+    				console.log("Item Hierarchy ",data[0].data._ItemHierarchy);
     				var iter_array = [];
     				var unscheduled = false;
     				for(var i=0;i<data.length;i++){
@@ -971,381 +897,28 @@
     					iter_array[i] = parseInt(data[i].data.Iteration);
     				}
     				
-    				
+    				// if there are any stories which are not assigned.
     				if(iter_array.length!=data.length){
     					unscheduled = true;
     				}
-    				//console.log('before length ',me.store_iterations.length);	
-    				var groupedByEndDate = _.uniq(me.store_iterations);	
-    				//console.log('after length ',groupedByEndDate.length);
-    				 //groupedByEndDate = _.indexBy(groupedByEndDate,"EndDate");
-    				//groupedByEndDate = _.sortBy(groupedByEndDate, function(record){return record.EndDate;}).reverse();
     				
-    				var latest_iteration = _.first(_.intersection(groupedByEndDate,iter_array));
-    				var first_iteration = _.last(_.intersection(groupedByEndDate,iter_array));
+    				var groupedByEndDate = _.uniq(me.store_iterations);	//store_iterations contains all iterations sorted by EndDate DESC
     				
-    				console.log('latest iteration for pOID ',prefixed_story_children,' is ',latest_iteration,' first is ',first_iteration);
-    				me._get_name_of_iteration(latest_iteration,first_iteration,prefixed_story_children,unscheduled);
-    				// if(iter_array.length>0)
-    					// me._get_latest_iteration(iter_array,prefixed_story_children);
-    			//	console.log("iter array ",iter_array);
-    				//var final_array = _.filter(groupedByEndDate, function(item){return _.contains(iter_array,item.id);});
+    				var latest_iteration = _.first(_.intersection(groupedByEndDate,iter_array)); //getting the latest iteration
+    				var first_iteration = _.last(_.intersection(groupedByEndDate,iter_array));// getting the first iteration
     				
-    				//console.log("POID ",prefixed_story_children," exploring ",data," iter array",groupedByEndDate);
+    				me._get_name_of_iteration(latest_iteration,prefixed_story_children,unscheduled);
     				
-    					//me._get_name_of_iteration(data[0].data.Iteration,prefixed_story_children);
     				
     			}
     		}
     	});
     	this.hideMask();
     },
-    
-    
-    _get_latest_iteration: function(iteration_array,pOID){
-    	var me = this;
-    	
-    	console.log('iteration array for pOID ',pOID,' is ',iteration_array);
-    	var query = Ext.create('Rally.data.lookback.QueryFilter',{
-    		property: 'EndDate', operator: 'in', value: iteration_array
-    	}).and(Ext.create('Rally.data.lookback.QueryFilter',{property: '_TypeHierarchy', operator: '=', value: "Iteration"})).and(Ext.create('Rally.data.lookback.QueryFilter',{property: '__At', operator: '=', value: 'current'}));
-    	
-    	Ext.create('Rally.data.lookback.SnapshotStore',{
-    		autoLoad: true,
-    		fetch: ['EndDate','ObjectID','Name','StartDate'],
-    		filters: query,
-    		sorters: [{property: 'EndDate', direction: 'DESC'}],
-    		listeners: {
-    			load: function(store,data,success){
-    				console.log("results for pOID ",pOID," is ",data);
-    			}
-    		}
-    	});
-    	
-    },
-
-    _get_leaf_stories: function(){
-    	var me = this;
-    	Ext.create('Rally.data.WsapiDataStore',{
-    		autoLoad: true,
-    		model: 'HierarchicalRequirement',
-    		limit: '500',
-    		fetch: ['ObjectID','Children','DirectChildrenCount','FormattedID','Iteration','Release'],
-    		//filters:[{property: 'Children.Count', operator: '=', value: 0}],
-    		listeners: {
-    			load: function(store,data,success){
-    				var data_length = data.length;
-    				var sample_array = [];
-    				
-    				for(var i=0;i<data.length;i++){
-    					if(data[i].data.Children==null || data[i].data.Children.length==0)
-    						sample_array.push(data[i]);
-    						    					
-    				}
-    				
-    				for(var i=0;i<sample_array.length;i++){
-    				me._get_parent_of_story(sample_array[i].data.ObjectID);
-    				//console.log("Number = ", sample_array);
-    				}
-    				//console.log('Sample array is ',sample_array.length);
-    				
-    				
-    				
-    			}
-    		}
-    	});
-    	
-    },
-    _get_parent_of_story: function(story_object_id){  //recursive function
-    	
-    	var me = this;
-    	//console.log("Inside get parent ",story_object_id);
-    	Ext.create('Rally.data.WsapiDataStore',{
-    		autoLoad: true,
-    		model: 'HierarchicalRequirement',
-    		limit: '5000',
-    		fetch: ['Parent','ObjectID'],
-    		filters:[{property: "ObjectID", operator: "=", value: story_object_id}],
-    		listeners: {
-    			load: function(store,data,success){
-    				var data_length = data.length;
-    				 if(data_length==0 || data[0].data.Parent==null || data[0].data.Parent._type!="HierarchicalRequirement")
-    				return ;
-						
-
-    				// console.log("Number of parents = ",data_length);
-    				// console.log("Parent data is ",data[0]);
-    				//console.log("Story/Feature ",data[0].data.Parent);
-					me._process_parent(data[0].data.Parent.ObjectID);
-    				me._get_parent_of_story(data[0].data.Parent.ObjectID);
-    			//	me._get_parent_of_story(data[0].data.Parent.ObjectID); //dubious ?
-    			//	me._get_parent_of_story(data[0].data.Parent.ObjectID);
-    				// if(data_length==0 || !this.parent_is_story(data)){
-    					// return;
-    				// }
-    			}
-    		}
-    	});
-    	
-    	
-    },
-    _process_parent: function(parent_object_id){
-    	var me = this;
-    	console.log("sample ",parent_object_id);
-    	query = Ext.create('Rally.data.lookback.QueryFilter',{property: '__At', operator: '=',value: 'current' }).and(Ext.create('Rally.data.lookback.QueryFilter',{
-            property: '_ItemHierarchy', operator: 'in', value: parent_object_id
-        }));
-    	Ext.create('Rally.data.lookback.SnapshotStore',{
-    		autoLoad: true,
-    		limit: 200,
-    		context: {
-    			workspace: '/workspace/'+me.getContext().getWorkspace().ObjectID,
-    			project: '/project/'+me.getContext().getProject().ObjectID,
-    			projectScopeUp: true,
-    			projectScopeDown: true
-    		},
-    		fetch: ['Iteration','Name','_ItemHierarchy','Release'],
-    		filters: query,
-    		sorters:[{
-            	property: 'Iteration',
-            	direction: 'DESC'
-            }],
-    		listeners: {
-    			load: function(store,data,success){
-    				var iter = [];
-    				var unique_iterations = [];
-    				for(var i=0;i<data.length;i++)
-    					iter.push(data[i].data.Iteration);
-    				
-    				console.log("DATA ",data);	  					
-   					unique_iterations = _.uniq(iter);
-   					unique_iterations = _.filter(unique_iterations,function(num){return num!="";});
-    				
-   				//console.log("unique # ",unique_iterations.length," are ",unique_iterations);
-	   				
-	   				if(unique_iterations.length!=0)
-	       				{
-    					
-	   					var all_iterations = [];
-	   					// all_iterations = ;
-	   					console.log("unique ",unique_iterations," all ",me.store_iterations);
-	   					var solution = _.first(_.intersection(me.store_iterations,unique_iterations));
-	    				 console.log('solution ',solution);
-	    					 
-	    				 /*
-	    				  * Uncomment this and the other call in _get_name_of_iteration.
-	    				  */
-	    				// me._get_name_of_iteration(solution);
-	    				 console.log("Iter NAME ",me.eCount);
-	    				//me._update_iteration_of_parent(parent_object_id,iter_name);		
-	    			}
-	    			else{
-	    				
-	    			}
-    			}
-    		}
-    		
-    	});
-    },
-    _update_iteration_of_parent: function (pOID,iOID,lOID, iteration,unscheduled){
-   // console.log("Updating Iteration ",'/iteration/'+iteration);
-        this.showMask("Updating Iteration of Parent...");
-	var me = this;
-		Rally.data.ModelFactory.getModel({
-    			type: 'User Story',
-    			success: function (model){
-    				
-    					var that = this;
-    					
-    					//console.log("objectid #",objectid," latestpsi ",latestpsi);
-    					this.model = model;
-    					var id = pOID;
-    					//console.log("_readRecord ",id);
-    					this.model.load(id,{
-    						fetch: ['Name','DIteration','DPSI','PortfolioItem'],
-    						callback: function (record, operation){
-    							//console.log('name .. ', record.get('Name'));
-    							if(operation.wasSuccessful()){
-    								console.log("Updating iteration for parent ",pOID," iteration ",iteration," unscheduled is ",unscheduled);
-    								if(iteration==null){
-    									iteration=" ";
-    									record.set('DIteration',iteration);
-    									record.set('DPSI',"");
-    								}
-    								else{
-    									if(unscheduled==true)
-    										iteration+="*";	
-	    								record.set('DIteration',iteration);
-	    								record.set('DPSI',"PSI "+iteration.match(/\d+/)[0]);
-	    								
-    								}
-    								console.log("DPSI ",pOID,iteration);
-    								record.save({
-    									callback: function(record,operation){
-    										if(operation.wasSuccessful()){
-    											//if(record.get('Name').substring(0,5) == "EPIC:"){
-    												
-    												//console.log("EPIC Name ",record.get('PortfolioItem'));
-    												console.log("operation on success ",record.get("PortfolioItem"));
-    												if(record.get('PortfolioItem')!=null)
-    												me._update_feature_iteration(record,iteration,iOID,lOID);
-    											//}
-    											//console.log("Operation Successful");
-    											
-    										}
-    										else
-    										console.log("ERROR ",operation.getError().errors);
-    									},
-    									scope: this,
-    								});
-    								
-    							}
-    						},
-    						scope: this
-    					});
-    					
-    		}
-    		});
-    		me.hideMask();			
-
-    },
-    _update_feature_iteration: function(feature,iteration,iOID,lOID){
-    	var feature_object = feature.get('PortfolioItem');
-    	
-    	this.showMask("Updating Feature of Parent story...");
-    	var fID = feature_object._ref.toString().match(/\d+/)[0];
-    	console.log('Feature ID is ',fID,' and iteration to be updated is ',iteration);
-		
-		Rally.data.ModelFactory.getModel({
-			type: 'PortfolioItem/Feature',
-			success: function(model){
-				model.load(fID,{
-					fetch: ['Name','FormattedID','DIteration','DPSI'],
-					callback: function(record,operation){
-						console.log('Prior to update DIteration is ', record.get('DIteration'),' and feature is ',fID,' and iteration is ',iteration);
-                                                if(iteration!=""){
-						record.set('DIteration',iteration);
-						record.set('DPSI',"PSI "+iteration.match(/\d+/)[0]);
-						record.save({
-							callback: function(record,operation){
-								if(operation.wasSuccessful()){
-                                                                       
-									console.log('DIteration after update is ',record.get('DIteration'));
-									console.log('DPSI after update is ',record.get('DPSI'));
-									console.log('FID is ',record.get('FormattedID'),' First Iteration is ',lOID,' last iteration is ',iOID);
-									me._get_feature_start_end_date(fID,lOID,iOID);
-								}
-							}
-						});
-                                            }
-					}
-				});
-			}
-		});
-       this.hideMask();
-    },
     /*
-     * Gets Iteration dates for first and last Iteration
-     * Going further, add the Start date of first iteration & End date of last iteration as Planned StartDate and EndDate of Feature.
+     * Gets the name of the iteration whose object ID is iOID.
      */
-    _get_feature_start_end_date: function (fID,first,last){
-    	var configs = [];
-    	this.showMask("Getting Planned dates for feature");
-    	var me = this;
-    	// using async.js here
-    	configs.push({
-    		model: "Iteration",
-    		fetch: ['Name','StartDate','EndDate','ObjectID'],
-    		filters: [{property: 'ObjectID', operator: '=', value: first }]
-    	});
-    	
-    	configs.push({
-    		model: "Iteration",
-    		fetch: ['Name','StartDate','EndDate','ObjectID'],
-    		filters: [{property: 'ObjectID', operator: '=', value: last}]
-    	});
-    	
-    	async.map(configs, this.wsapiQuery, function(err,results){
-    		var firstIteration = results[0];
-    		var lastIteration = results[1];
-    		if(firstIteration && lastIteration){
-    		console.log('FID: ',fID,' First Data ',firstIteration[0].get("StartDate"),' Second Data ',lastIteration[0].get("EndDate"));
-    		me._update_feature_dates(fID,firstIteration[0].get("StartDate"),lastIteration[0].get("EndDate"));
-    		}
-    		else{
-    			console.log("Either the first or last iteration dates could not be found! Skipping! for ",fID);
-    		}
-    	});
-    	
-    	this.hideMask();
-    },
-    
-    /*
-     * Update PlannedStartDate -> Start, PlannedEndDate -> End for Feature -> fID
-     */
-    _update_feature_dates: function(fID, Start, End){
-    	var me = this;
-    	this.showMask("One Moment...");
-    	Rally.data.ModelFactory.getModel({
-			type: 'PortfolioItem/Feature',
-			success: function(model){
-				model.load(fID,{
-					fetch: ['Name','FormattedID','PlannedStartDate','PlannedEndDate'],
-					callback: function(record,operation){
-						console.log('Prior to update Start is ', record.get('PlannedStartDate'),' and feature is ',fID,' and EndDate is ',record.get('PlannedEndDate'));
-						record.set('PlannedStartDate',Start);
-						record.set('PlannedEndDate',End);
-						record.save({
-							callback: function(record,operation){
-								if(operation.wasSuccessful()){
-                                                                       
-									console.log('PlannedStartDate after update is ',record.get('PlannedStartDate'));
-									console.log('PlannedEndDate after update is ',record.get('PlannedEndDate'));
-								}
-							}
-						});
-                                            
-					}
-				});
-			}
-		});
-		me.hideMask();
-    },
-    
-    wsapiQuery: function (config,callback){
-    	Ext.create('Rally.data.WsapiDataStore',{
-    		autoLoad: true,
-    		model: config.model,
-    		fetch: config.fetch,
-    		filters: config.filters,
-    		listeners: {
-    			scope: this,
-    			load: function(store,data){
-    				callback(null,data);
-    			}
-    		}
-    	});
-    },
-    _get_all_features: function (epicID){
-    	var me = this;
-    	
-    	Ext.create('Rally.data.WsapiDataStore',{
-    		autoLoad: true,
-    		model: 'HierarchicalRequirement',
-    		fetch: ['ObjectID','Name','FormattedID','Parent','UserStories'],
-    		filters: { property: "ObjectID", operator: "=", value: epicID},
-    		listeners: {
-    			load: function(store,data,success){
-    				var data_length = data.length;
-    				
-    				//console.log("FEATURE ",data);
-    			}
-    		}
-    	});
-    },
-    
-    
-    _get_name_of_iteration: function(iOID,lOID,pOID,flag){
+    _get_name_of_iteration: function(iOID,pOID,flag){
     	var me = this;
     	this.showMask("Getting name of Iteration...");
     	Ext.create('Rally.data.WsapiDataStore',{
@@ -1364,16 +937,233 @@
                     var data_length = data.length;
                     if(data.length!=0){
                     
-                    me._update_iteration_of_parent(pOID,iOID,lOID,data[0].data._refObjectName,flag);
+                    me._update_iteration_of_parent(pOID,data[0].data._refObjectName,flag);
                     }
-                  //  console.log("TEMP ",temp);
-                   // return temp;
+
                 }
             }
         });
         me.hideMask();
     },
+    /*
+     * Updates D-Iteration and D-PSI values at the EPIC story level and initiates the updation sequence for the associated feature (if a feature exists)
+     */
+    _update_iteration_of_parent: function (pOID, iteration,unscheduled){
+    this.showMask("Updating Iteration of Parent...");
+	var me = this;
+		Rally.data.ModelFactory.getModel({
+    			type: 'User Story',
+    			success: function (model){
+    				
+    					var that = this;
+    					this.model = model;
+    					var id = pOID;
+    					this.model.load(id,{
+    						fetch: ['Name','DIteration','DPSI','PortfolioItem'],
+    						callback: function (record, operation){
+    							if(operation.wasSuccessful()){
+    								if(iteration==null){
+    									iteration=" ";
+    									record.set('DIteration',iteration);
+    									record.set('DPSI',"");
+    								}
+    								else{
+    									if(unscheduled==true)
+    										iteration+="*";	
+	    								record.set('DIteration',iteration);
+	    								record.set('DPSI',"PSI "+iteration.match(/\d+/)[0]);
+	    								
+    								}
+    								record.save({
+    									callback: function(record,operation){
+    										if(operation.wasSuccessful()){
+    											if(record.get('PortfolioItem')!=null){
+    												var feature_object = record.get('PortfolioItem');
+    												var fID = feature_object._ref.toString().match(/\d+/)[0];
+													fID = parseInt(fID);
+													if(me.featureCount==0){
+    												me.featureCount++;
+    												console.log('Feature count ',me.featureCount);
+    												}
+    												me._update_feature(fID); //updating that feature
+    											}
+    										}
+    										else
+    										console.log("ERROR ",operation.getError().errors);
+    									},
+    									scope: this,
+    								});
+    								
+    							}
+    						},
+    						scope: this
+    					});
+    					
+    		}
+    		});
+    		me.hideMask();			
+
+    },
+    /*
+     * This function is not currently implemented 
+     */
+    _get_all_features: function(){
+    	var me = this;
+    	if(me.featureCount==0){
+    		me.featureCount++;
+    		Ext.create('Rally.data.WsapiDataStore',{
+    		autoLoad: true,
+    		model: 'PortfolioItem/Feature',
+    		fetch: ['ObjectID','Name','FormattedID'],
+    		listeners: {
+    			load: function(store,data,success){
+    				var data_length = data.length;
+    				if(data.length!=null){
+    					for(var i=0;i<data.length;i++)
+    						_update_feature(data[i].data.ObjectID);
+    				}
+    			}
+    		}
+    	});
+    	}
+    	
+    },
     
+    /*
+     * This function looks for the child leaf nodes of the feature specified with object ID , fID.
+     * Further, it extracts the first iteration and last iteration out of all its child leaf node stories.
+     * It then gets the first and last iteration name and also the Start Date of first iteration and End Date of last iteration.
+     * It then supplies this information to _set_feature_level_values.
+     */
+    
+    _update_feature: function(fID){
+    	 var query = Ext.create('Rally.data.lookback.QueryFilter',{
+            property: '_ItemHierarchy', operator: 'in', value: fID
+        }).and( Ext.create('Rally.data.lookback.QueryFilter',{
+            property: '_TypeHierarchy', operator: '=', value: "HierarchicalRequirement"
+        })).and( Ext.create('Rally.data.lookback.QueryFilter',{
+            property: 'Children', operator: '=', value: null
+        }));
+        query = query.and(Ext.create('Rally.data.lookback.QueryFilter',{property: '__At', operator: '=',value: 'current' }));
+        console.log("For FID ",fID);
+        Ext.create('Rally.data.lookback.SnapshotStore',{
+        	
+        	autoLoad: true,
+        	fetch: ['Iteration','Name','ObjectID','_ItemHierarchy'],
+        	filters: query,
+        	sorters:[{property: 'Iteration', direction: 'DESC'}],
+        	listeners:{
+        		load: function(store,data,success){
+        			var iter_array = [];
+        			var unscheduled = false;
+        			//console.log('Data ',data);
+        			
+        			for(var i=0;i<data.length;i++){
+    					if(data[i].data.Iteration.length!=0)
+    					iter_array[i] = parseInt(data[i].data.Iteration);
+    				}
+    				
+    				
+        			if(data.length!=iter_array.length)
+        				unscheduled = true;
+        				
+        			var groupedByEndDate = _.uniq(me.store_iterations);
+        			
+        			var latest_iteration = _.first(_.intersection(groupedByEndDate,iter_array));
+    				var first_iteration = _.last(_.intersection(groupedByEndDate,iter_array));
+    				
+    				//use async.js here
+    				var configs = [];
+    				configs.push({
+    					model: "Iteration",
+    					fetch: ['Name','StartDate','EndDate','ObjectID'],
+    					filters: [{property: 'ObjectID', operator: '=' , value: first_iteration}]
+    				});
+    				configs.push({
+    					model: "Iteration",
+    					fetch: ['Name','StartDate','EndDate','ObjectID'],
+    					filters: [{property: 'ObjectID', operator: '=' , value: latest_iteration}]
+    				});
+    				
+    				async.map(configs, me.wsapiQuery, function(err,results){
+		    		var firstIteration = results[0];
+		    		var lastIteration = results[1];
+		    		
+		    		console.log('FID: ',fID,' First Data ',firstIteration[0].get("StartDate"),' Second Data ',lastIteration[0].get("EndDate"));
+		    		var startDate = firstIteration[0].get("StartDate");
+		    		var EndDate = lastIteration[0].get("EndDate");
+		    		var dIteration = lastIteration[0].get("Name");
+		    		me._set_feature_level_values(fID,dIteration,unscheduled,startDate,EndDate);
+		    		
+		    		
+		    	});
+        			
+        		}
+        	}
+        	
+        });
+        
+    }, 
+    /*
+     * This function sets dIteration, PlannedStartDate and PlannedEndDate values to the feature with ID, fID.
+     */
+    _set_feature_level_values: function(fID,dIteration,unscheduled,startDate,endDate){
+    	if(unscheduled)
+    		dIteration+="*";
+    	
+    	Rally.data.ModelFactory.getModel({
+			type: 'PortfolioItem/Feature',
+			success: function(model){
+				model.load(fID,{
+					fetch: ['Name','FormattedID','DIteration','DPSI','StartDate','EndDate'],
+					callback: function(record,operation){
+						console.log('Prior to update DIteration is ', record.get('DIteration'),' and feature is ',fID,' and startdate is ',startDate,' and end date is ',endDate);
+                        if(dIteration!=""){
+                        	
+							record.set('DIteration',dIteration);
+							record.set('DPSI',"PSI "+dIteration.match(/\d+/)[0]);
+							record.set('PlannedStartDate',startDate);
+							record.set('PlannedEndDate',endDate);
+							
+							
+							record.save({
+								callback: function(record,operation){
+									if(operation.wasSuccessful()){
+	                                                                       
+										console.log('DIteration after update is ',record.get('DIteration'));
+										console.log('DPSI after update is ',record.get('DPSI'));
+										console.log('FID is ',record.get('FormattedID'),' PlannedStartDate is ',startDate,' PlannedEndDate is ',endDate);
+									}else{
+										  console.log("ERROR ",operation.getError().errors);
+
+									}
+								}
+							});
+                       }
+					}
+				});
+			}
+		});
+    	
+    },
+   
+    
+    wsapiQuery: function (config,callback){
+    	Ext.create('Rally.data.WsapiDataStore',{
+    		autoLoad: true,
+    		model: config.model,
+    		fetch: config.fetch,
+    		filters: config.filters,
+    		listeners: {
+    			scope: this,
+    			load: function(store,data){
+    				callback(null,data);
+    			}
+    		}
+    	});
+    },
+    
+
     _get_all_iterations: function(){
     	var me = this;
     	me.getiterationcount++;
@@ -1397,10 +1187,7 @@
                     for(var i=0;i<data_length;i++){
                     	me.store_iterations.push(data[i].data.ObjectID);                    	
                     }
-                    
-                    
-                  //  console.log("TEMP ",temp);
-                   // return temp;
+
                 }
             }
         });
@@ -1473,11 +1260,7 @@
         // that have to be matched to the cols array above (would be nice to have key indexing)
 
         var number_of_rows = rows.length;
-      //  rows = _.sortBy(rows,function(row){return row.iteration_date;}).reverse();
-      //  temp_max = [];
-     	//me.temp_max.push(_.max(rows, function(row){return row.iteration_date;})); 
-     	//me.project_array.push(_.max(rows, function(row){return row.iteration_date;}));
-        //console.log("MAX iteration is ",_.max(rows, function(row){return row.iteration_date;}));
+      
 		
         for ( var i=0; i<number_of_rows; i++ ) {
             var table_row = [];
@@ -1540,7 +1323,6 @@
     _redrawTables: function() {
         this.log( "_redrawTables" );
         var me = this;
-	  //  console.log("Temp max ",me.project_array[me.project_array.length-1],me.project_array[me.project_array.length-2]);
 
         // reset to base data
         var col_array = [];
