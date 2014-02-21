@@ -979,9 +979,8 @@
     										if(operation.wasSuccessful()){
     											if(record.get('PortfolioItem')!=null){
     												var feature_object = record.get('PortfolioItem');
-    												var fID = feature_object._ref.toString().match(/\d+/)[0];
-													fID = parseInt(fID);
-													if(me.featureCount==0){
+    												var fID = parseInt(feature_object._ref.toString().match(/\d+/)[0]);
+											        if(me.featureCount==0){
     												me.featureCount++;
     												console.log('Feature count ',me.featureCount);
     												}
